@@ -1,0 +1,45 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+.gradio/
+
+# Models and Hugging Face cache
+models/
+.cache/
+*.bin
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.onnx
+
+# Data
+data/raw/
+data/test_set/audio/
+
+# Pipeline outputs
+outputs/
+
+# Editors and OS
+.vscode/
+.idea/
+.claude/
+Thumbs.db
+Desktop.ini
+.DS_Store

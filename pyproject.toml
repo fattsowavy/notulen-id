@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "notulen-id"
+version = "0.1.0"
+description = "Automatic minutes for Indonesian meetings and podcasts: ASR, diarization, and LLM summaries."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = { text = "MIT" }
+dependencies = [
+    # torch 2.6+ changes torch.load defaults and breaks pyannote.audio 3.x checkpoints.
+    "torch==2.5.1",
+    "torchaudio==2.5.1",
+    "numpy>=1.26,<2",
+    "soundfile>=0.12",
+    "faster-whisper>=1.1,<2",
+    "pyannote.audio>=3.3.2,<4",
+    "pyannote.metrics>=3.2",
+    # pyannote.audio 3.x still passes use_auth_token, removed in huggingface_hub 1.0.
+    "huggingface_hub>=0.28,<1",
+    "pydantic>=2.7,<3",
+    "pyyaml>=6",
+    "python-dotenv>=1",
+    "httpx>=0.27",
+    "gradio>=5,<6",
+    "jiwer>=3",
+    "rouge-score>=0.1.2",
+    "bert-score>=0.3.13",
+]
+
+[project.optional-dependencies]
+gpu = [
+    "nvidia-cublas-cu12",
+    "nvidia-cudnn-cu12==9.*",
+]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "ipykernel>=6",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+notulen = ["summarize/prompts/*.md"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "scripts", "app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"
