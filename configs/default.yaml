@@ -1,0 +1,73 @@
+# Default pipeline settings.
+# Tuned for: RTX 4050 Laptop (6 GB VRAM), 11.7 GB RAM, 14 physical CPU cores.
+# Re-run scripts/check_device.py on other machines and adjust the values below.
+
+paths:
+  output_dir: outputs
+  temp_dir: outputs/tmp
+
+logging:
+  level: INFO
+
+audio:
+  sample_rate: 16000
+  channels: 1
+  # Long recordings are split into chunks to keep memory use bounded.
+  max_chunk_seconds: 1800
+  chunk_overlap_seconds: 2.0
+
+vad:
+  enabled: true
+  threshold: 0.5
+  min_speech_duration_ms: 250
+  min_silence_duration_ms: 500
+  speech_pad_ms: 200
+
+asr:
+  model: medium
+  device: cuda
+  compute_type: int8_float16
+  language: id
+  beam_size: 5
+  word_timestamps: true
+  vad_filter: true
+  condition_on_previous_text: false
+
+diarization:
+  pipeline: pyannote/speaker-diarization-3.1
+  device: cuda
+  # null lets pyannote estimate the number of speakers.
+  num_speakers: null
+  min_speakers: null
+  max_speakers: null
+
+merge:
+  # Words without any speaker overlap are assigned to the nearest speaker turn
+  # when that turn is within this distance.
+  max_gap_seconds: 1.0
+  speaker_label_format: "Pembicara {index}"
+
+llm:
+  # Supported backends: ollama, openai_compatible
+  backend: ollama
+  model: gemma3:4b
+  temperature: 0.2
+  timeout_seconds: 600
+  max_retries: 2
+  ollama:
+    # Overridden by OLLAMA_HOST in .env when set.
+    host: http://127.0.0.1:11434
+    num_ctx: 8192
+  openai_compatible:
+    # The API key is read from LLM_API_KEY in .env.
+    base_url: https://api.openai.com/v1
+
+summarize:
+  # Map-reduce splits long transcripts into windows of this size.
+  chunk_max_chars: 12000
+  chunk_overlap_chars: 500
+  require_action_item_quote: true
+
+runtime:
+  # Limited VRAM and RAM: unload each model before the next stage starts.
+  release_models_between_stages: true
