@@ -45,6 +45,12 @@ class Segment(TimeSpan):
     no_speech_prob: float | None = None
 
 
+class SpeakerTurn(TimeSpan):
+    """A span of time attributed to one speaker."""
+
+    speaker: str = Field(min_length=1)
+
+
 class Transcript(Schema):
     """A complete transcript of one recording."""
 
