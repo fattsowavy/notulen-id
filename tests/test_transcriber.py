@@ -198,6 +198,66 @@ def test_close_releases_model(fake_model: type[FakeWhisperModel]) -> None:
     assert transcriber.load() is not first
 
 
+class FlakyGpuModel(FakeWhisperModel):
+    """Load on any device, but fail during inference on the GPU."""
+
+    def transcribe(self, path: str, **kwargs: Any) -> tuple[Iterator[SimpleNamespace], None]:
+        if self.init_kwargs["device"] == "cuda":
+
+            def fail() -> Iterator[SimpleNamespace]:
+                raise RuntimeError("CUDA failed with error no kernel image is available")
+                yield
+
+            return fail(), None
+        return super().transcribe(path, **kwargs)
+
+
+def test_inference_failure_on_gpu_falls_back_to_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("faster_whisper")
+    FakeWhisperModel.instances = []
+    chunk = make_chunk(0, 0.0, 1.0)
+    FakeWhisperModel.segments_by_path = {
+        str(chunk.path): [raw_segment(" halo", 0.0, 1.0, [raw_word(" halo", 0.0, 1.0)])]
+    }
+    monkeypatch.setattr("faster_whisper.WhisperModel", FlakyGpuModel)
+    asr = ASR.model_copy(update={"device": "cuda", "compute_type": "float16", "cpu_fallback": True})
+
+    transcriber = Transcriber(asr, VAD)
+    segments = transcriber.transcribe_chunk(chunk)
+
+    assert [segment.text for segment in segments] == ["halo"]
+    assert [model.init_kwargs["device"] for model in FakeWhisperModel.instances] == ["cuda", "cpu"]
+    assert FakeWhisperModel.instances[1].init_kwargs["compute_type"] == "int8"
+    assert transcriber.asr.device == "cpu"
+
+
+def test_load_failure_on_gpu_falls_back_to_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("faster_whisper")
+
+    class GpuLoadFails(FakeWhisperModel):
+        def __init__(self, model: str, **kwargs: Any) -> None:
+            if kwargs["device"] == "cuda":
+                raise RuntimeError("Library libcublas.so.12 is not found or cannot be loaded")
+            super().__init__(model, **kwargs)
+
+    FakeWhisperModel.instances = []
+    monkeypatch.setattr("faster_whisper.WhisperModel", GpuLoadFails)
+    asr = ASR.model_copy(update={"device": "cuda", "cpu_fallback": True})
+
+    model = Transcriber(asr, VAD).load()
+
+    assert model.init_kwargs["device"] == "cpu"
+
+
+def test_gpu_failure_is_raised_without_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("faster_whisper")
+    monkeypatch.setattr("faster_whisper.WhisperModel", FlakyGpuModel)
+    asr = ASR.model_copy(update={"device": "cuda"})
+
+    with pytest.raises(TranscriptionError):
+        Transcriber(asr, VAD).transcribe_chunk(make_chunk(0, 0.0, 1.0))
+
+
 def test_load_imports_torch_before_whisper(
     fake_model: type[FakeWhisperModel], monkeypatch: pytest.MonkeyPatch
 ) -> None:

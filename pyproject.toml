@@ -16,6 +16,8 @@ dependencies = [
     "numpy>=1.26,<2",
     "soundfile>=0.12",
     "faster-whisper>=1.1,<2",
+    # PyAV 19 removed av.open(metadata_errors=...), which faster-whisper 1.2 still passes.
+    "av>=11,<19",
     "pyannote.audio>=3.3.2,<4",
     "pyannote.metrics>=3.2",
     # pyannote.audio 3.x still passes use_auth_token, removed in huggingface_hub 1.0.

@@ -146,8 +146,26 @@ class Transcriber:
                 self.asr.model, device=self.asr.device, compute_type=self.asr.compute_type
             )
         except RuntimeError as exc:
-            raise _wrap_runtime_error(exc) from exc
+            error = _wrap_runtime_error(exc)
+            if not self._fall_back_to_cpu(error):
+                raise error from exc
+            return self.load()
         return self._model
+
+    def _fall_back_to_cpu(self, error: Exception) -> bool:
+        """Switch to CPU after a GPU failure when the config allows it."""
+        if not (
+            isinstance(error, TranscriptionError)
+            and self.asr.cpu_fallback
+            and self.asr.device != "cpu"
+        ):
+            return False
+        logger.warning("Whisper failed on %s, falling back to CPU: %s", self.asr.device, error)
+        self.asr = self.asr.model_copy(
+            update={"device": "cpu", "compute_type": self.asr.cpu_compute_type}
+        )
+        self._model = None
+        return True
 
     def close(self) -> None:
         """Release the model so the next pipeline stage can use the GPU."""
@@ -158,6 +176,15 @@ class Transcriber:
 
     def transcribe_chunk(self, chunk: AudioChunk) -> list[Segment]:
         """Transcribe one chunk and return segments on the recording's timeline."""
+        try:
+            return self._transcribe_chunk(chunk)
+        except TranscriptionError as error:
+            # GPU kernels can fail only at inference time, after the model loaded.
+            if not self._fall_back_to_cpu(error):
+                raise
+            return self._transcribe_chunk(chunk)
+
+    def _transcribe_chunk(self, chunk: AudioChunk) -> list[Segment]:
         model = self.load()
         try:
             raw_segments, _ = model.transcribe(

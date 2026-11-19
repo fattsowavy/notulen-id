@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,10 +15,12 @@ from pydantic import SecretStr
 
 from notulen.config import DiarizationConfig
 from notulen.diarization.diarizer import (
+    FORCE_NO_WEIGHTS_ONLY,
     DiarizationError,
     Diarizer,
     annotation_to_turns,
     read_rttm,
+    trusted_checkpoint_loading,
     write_rttm,
 )
 from notulen.schemas import SpeakerTurn
@@ -128,6 +131,35 @@ def test_load_explains_gated_model(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(DiarizationError, match="terms"):
         Diarizer(CONFIG, TOKEN).load()
+
+
+def test_checkpoint_override_is_scoped_to_pipeline_loading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("pyannote.audio")
+    monkeypatch.delenv(FORCE_NO_WEIGHTS_ONLY, raising=False)
+    seen: list[str | None] = []
+
+    def from_pretrained(*args: Any, **kwargs: Any) -> FakePipeline:
+        seen.append(os.environ.get(FORCE_NO_WEIGHTS_ONLY))
+        return FakePipeline()
+
+    monkeypatch.setattr("pyannote.audio.Pipeline.from_pretrained", from_pretrained)
+
+    Diarizer(CONFIG, TOKEN).load()
+
+    assert seen == ["1"]
+    assert FORCE_NO_WEIGHTS_ONLY not in os.environ
+
+
+def test_checkpoint_override_restores_previous_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(FORCE_NO_WEIGHTS_ONLY, "0")
+
+    with pytest.raises(RuntimeError), trusted_checkpoint_loading():
+        assert os.environ[FORCE_NO_WEIGHTS_ONLY] == "1"
+        raise RuntimeError
+
+    assert os.environ[FORCE_NO_WEIGHTS_ONLY] == "0"
 
 
 def test_diarize_passes_audio_in_memory(fake_pipeline: FakePipeline, wav_path: Path) -> None:

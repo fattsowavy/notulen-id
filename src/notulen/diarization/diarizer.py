@@ -9,8 +9,11 @@ from __future__ import annotations
 import argparse
 import gc
 import logging
+import os
 import re
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from types import TracebackType
 from typing import Any
@@ -27,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 SPEAKER_LABEL = "SPEAKER_{index:02d}"
 RTTM_FIELD_COUNT = 9
+FORCE_NO_WEIGHTS_ONLY = "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"
 
 
 class DiarizationError(RuntimeError):
@@ -82,6 +86,26 @@ def read_rttm(path: Path) -> list[SpeakerTurn]:
     return sorted(turns, key=lambda turn: (turn.start, turn.end))
 
 
+@contextmanager
+def trusted_checkpoint_loading() -> Iterator[None]:
+    """Let torch.load unpickle full checkpoints while the pyannote pipeline loads.
+
+    PyTorch 2.6 made weights_only=True the default, which rejects the pyannote 3.x
+    checkpoints (they store Lightning hyperparameters, not only tensors). Lightning
+    passes weights_only=None, so torch's override variable applies. It is set only
+    for this block and only for the official pipeline named in the config.
+    """
+    previous = os.environ.get(FORCE_NO_WEIGHTS_ONLY)
+    os.environ[FORCE_NO_WEIGHTS_ONLY] = "1"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(FORCE_NO_WEIGHTS_ONLY, None)
+        else:
+            os.environ[FORCE_NO_WEIGHTS_ONLY] = previous
+
+
 class Diarizer:
     """Load a pyannote pipeline on demand and diarize WAV files."""
 
@@ -114,9 +138,10 @@ class Diarizer:
         from pyannote.audio import Pipeline
 
         logger.info("Loading diarization pipeline %s", self.config.pipeline)
-        pipeline = Pipeline.from_pretrained(
-            self.config.pipeline, use_auth_token=self.hf_token.get_secret_value()
-        )
+        with trusted_checkpoint_loading():
+            pipeline = Pipeline.from_pretrained(
+                self.config.pipeline, use_auth_token=self.hf_token.get_secret_value()
+            )
         if pipeline is None:
             raise DiarizationError(
                 f"Could not load {self.config.pipeline}. Accept the model terms on Hugging Face "
