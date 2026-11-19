@@ -29,6 +29,10 @@ audio -> ffmpeg + Silero VAD -> faster-whisper -> pyannote.audio
 
 Demo ini berjalan di ZeroGPU: GPU dipinjam hanya selama transkripsi dan pengenalan pembicara, lalu ringkasan dibuat lewat Hugging Face Inference Providers. Setiap pengunjung punya kuota GPU harian dari Hugging Face (lebih besar jika login), jadi demo bisa menolak permintaan setelah beberapa kali dicoba.
 
+## Memilih LLM
+
+Buka panel **Pengaturan LLM** untuk memakai penyedia lain (Groq, Google Gemini, OpenRouter, OpenAI, atau endpoint OpenAI-compatible milik Anda) dengan API key Anda sendiri. Key hanya dipakai untuk permintaan itu, tidak disimpan, dan tidak ditulis ke log.
+
 ## Privasi
 
-Audio diproses di server Space ini, dan transkripnya dikirim ke Hugging Face Inference Providers untuk diringkas. Jangan mengunggah rekaman yang berisi informasi rahasia.
+Audio diproses di server Space ini. Transkripnya dikirim ke penyedia LLM yang dipilih (secara default Hugging Face Inference Providers) untuk diringkas. Jangan mengunggah rekaman yang berisi informasi rahasia.

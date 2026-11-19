@@ -163,7 +163,21 @@ python app/gradio_app.py
 
 Ganti konfigurasi lewat `--config path.yaml` atau variabel lingkungan `NOTULEN_CONFIG`. File config bisa mewarisi config lain dengan `extends: default.yaml` dan hanya menulis bagian yang berbeda, seperti [configs/spaces.yaml](configs/spaces.yaml).
 
-Untuk memakai LLM yang kompatibel dengan OpenAI (OpenAI, Groq, Hugging Face router, dan lain-lain), ubah `llm.backend` menjadi `openai_compatible`, isi `llm.model` dan `llm.openai_compatible.base_url`, lalu simpan key di `.env` sebagai `LLM_API_KEY`.
+### Memilih LLM
+
+Di demo, buka panel **Pengaturan LLM** untuk memilih penyedia dan model untuk tiap permintaan:
+
+| Penyedia | Key |
+| --- | --- |
+| Ollama (lokal) | Tidak perlu. Daftar model diambil dari model yang terpasang di Ollama. |
+| Hugging Face, Groq, Google Gemini, OpenRouter, OpenAI | Key milik pengguna, atau key server jika penyedia itu yang diatur di config. |
+| Lainnya (OpenAI-compatible) | Isi base URL sendiri, misalnya LM Studio di `http://127.0.0.1:1234/v1`. Key opsional. |
+
+Nama model bisa dipilih dari daftar atau diketik bebas. Daftar penyedia dan saran model ada di `demo.llm_providers` di [configs/default.yaml](configs/default.yaml).
+
+Key yang diketik di demo hanya dipakai untuk permintaan itu, tidak disimpan, dan tidak ditulis ke log. Key milik server (`LLM_API_KEY` atau `HF_TOKEN`) **hanya dikirim ke endpoint yang diatur di bagian `llm:` config**, jadi pengunjung yang memilih penyedia lain tidak bisa memakai atau mencuri key Anda.
+
+Untuk CLI dan default demo, ubah bagian `llm:`. Untuk LLM yang kompatibel dengan OpenAI, isi `llm.backend: openai_compatible`, `llm.model`, dan `llm.openai_compatible.base_url`, lalu simpan key di `.env` sebagai `LLM_API_KEY`.
 
 ### Evaluasi dan pengujian
 
@@ -196,7 +210,7 @@ Space memakai [configs/spaces.yaml](configs/spaces.yaml): Whisper dan pyannote d
    hf upload <username-hf>/<nama-space> dist/space . --repo-type space
    ```
 
-Ringkasan di Space memakai kredit Inference Providers milik pemilik token. Jika kredit habis, demo tetap menampilkan transkrip dan memberi tahu bahwa ringkasan gagal.
+Secara default, ringkasan di Space memakai kredit Inference Providers milik pemilik token. Pengunjung bisa memilih penyedia lain di panel Pengaturan LLM dengan key mereka sendiri (Ollama disembunyikan di Spaces). Jika kredit habis, demo tetap menampilkan transkrip dan memberi tahu bahwa ringkasan gagal.
 
 ## Struktur proyek
 
