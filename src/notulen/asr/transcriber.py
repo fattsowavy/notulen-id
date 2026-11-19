@@ -197,10 +197,10 @@ class Transcriber:
         segments = merge_chunk_segments(results)
         elapsed = time.perf_counter() - started
         logger.info(
-            "Transcribed %.1f s of audio in %.1f s (%.2fx realtime), %d segment(s)",
+            "Transcribed %.1f s of audio in %.1f s (RTF %.2f), %d segment(s)",
             audio.duration,
             elapsed,
-            audio.duration / elapsed if elapsed > 0 else 0.0,
+            elapsed / audio.duration if audio.duration > 0 else 0.0,
             len(segments),
         )
         return Transcript(
