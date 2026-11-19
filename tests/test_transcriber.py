@@ -198,6 +198,17 @@ def test_close_releases_model(fake_model: type[FakeWhisperModel]) -> None:
     assert transcriber.load() is not first
 
 
+def test_load_imports_torch_before_whisper(
+    fake_model: type[FakeWhisperModel], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr("notulen.asr.transcriber.load_torch_first", lambda: calls.append("torch"))
+
+    Transcriber(ASR, VAD).load()
+
+    assert calls == ["torch"]
+
+
 def test_missing_cuda_library_gives_actionable_error(
     fake_model: type[FakeWhisperModel], monkeypatch: pytest.MonkeyPatch
 ) -> None:

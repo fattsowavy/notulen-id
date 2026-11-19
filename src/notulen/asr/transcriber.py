@@ -10,9 +10,6 @@ import argparse
 import gc
 import logging
 import math
-import os
-import site
-import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -22,37 +19,16 @@ from typing import Any
 from notulen.audio.preprocess import AudioChunk, PreprocessedAudio, preprocess_audio
 from notulen.config import AsrConfig, VadConfig, load_config
 from notulen.logging_utils import setup_logging
+from notulen.runtime import load_torch_first
 from notulen.schemas import Segment, Transcript, Word
 
 logger = logging.getLogger(__name__)
 
 CUDA_ERROR_MARKERS = ("cublas", "cudnn", "cuda", ".dll")
-CUDA_LIBRARY_DIRS = (
-    Path("nvidia") / "cublas" / "bin",
-    Path("nvidia") / "cudnn" / "bin",
-    Path("torch") / "lib",
-)
 
 
 class TranscriptionError(RuntimeError):
     """Raised when the speech recognition model cannot run."""
-
-
-def _add_cuda_libraries_to_path() -> None:
-    """Make the cuBLAS and cuDNN DLLs installed by pip discoverable on Windows."""
-    if sys.platform != "win32":
-        return
-
-    current = os.environ.get("PATH", "").split(os.pathsep)
-    found = [
-        str(root / library_dir)
-        for root in map(Path, site.getsitepackages())
-        for library_dir in CUDA_LIBRARY_DIRS
-        if (root / library_dir).is_dir() and str(root / library_dir) not in current
-    ]
-    if found:
-        os.environ["PATH"] = os.pathsep.join([*found, *current])
-        logger.debug("Added CUDA library folders to PATH: %s", found)
 
 
 def _wrap_runtime_error(exc: RuntimeError) -> Exception:
@@ -156,9 +132,7 @@ class Transcriber:
         if self._model is not None:
             return self._model
 
-        if self.asr.device != "cpu":
-            _add_cuda_libraries_to_path()
-
+        load_torch_first()
         from faster_whisper import WhisperModel
 
         logger.info(

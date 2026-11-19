@@ -13,6 +13,7 @@ import numpy as np
 import soundfile as sf
 
 from notulen.config import AudioConfig, VadConfig
+from notulen.runtime import load_torch_first
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,7 @@ def detect_speech(audio: np.ndarray, sample_rate: int, vad: VadConfig) -> list[S
     if audio.size == 0:
         return []
 
+    load_torch_first()
     from faster_whisper.vad import VadOptions, get_speech_timestamps
 
     options = VadOptions(
