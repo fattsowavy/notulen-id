@@ -198,15 +198,33 @@ class OpenAICompatibleClient(LlmClient):
 
     def _error_message(self, response: httpx.Response) -> str:
         if response.status_code in (401, 403):
-            return f"The LLM API rejected the credentials (HTTP {response.status_code}). " + (
-                "Check LLM_API_KEY in .env."
+            source = "HF_TOKEN" if self.config.openai_compatible.use_hf_token else "LLM_API_KEY"
+            return (
+                f"The LLM API rejected the credentials (HTTP {response.status_code}): "
+                f"{response.text[:200]}. Check {source} and its permissions."
             )
         return super()._error_message(response)
+
+
+def resolve_api_key(config: LlmConfig, secrets: Secrets) -> str | None:
+    """Pick LLM_API_KEY, or HF_TOKEN when the config allows it."""
+    if secrets.llm_api_key is not None:
+        return secrets.llm_api_key.get_secret_value()
+    if config.openai_compatible.use_hf_token and secrets.hf_token is not None:
+        return secrets.hf_token.get_secret_value()
+    return None
+
+
+def llm_unavailable_reason(config: LlmConfig, secrets: Secrets) -> str | None:
+    """Explain why summaries cannot work with this configuration, or None if they can."""
+    if config.backend == "openai_compatible" and resolve_api_key(config, secrets) is None:
+        source = "HF_TOKEN" if config.openai_compatible.use_hf_token else "LLM_API_KEY"
+        return f"Ringkasan tidak tersedia karena {source} belum diatur."
+    return None
 
 
 def create_llm_client(config: LlmConfig, secrets: Secrets) -> LlmClient:
     """Build the client for the configured backend."""
     if config.backend == "ollama":
         return OllamaClient(config)
-    api_key = secrets.llm_api_key.get_secret_value() if secrets.llm_api_key else None
-    return OpenAICompatibleClient(config, api_key)
+    return OpenAICompatibleClient(config, resolve_api_key(config, secrets))
