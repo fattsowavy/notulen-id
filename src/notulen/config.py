@@ -147,6 +147,42 @@ class RuntimeConfig(StrictModel):
     release_models_between_stages: bool
 
 
+class DatasetBuildConfig(StrictModel):
+    """How scripts/build_test_set.py samples public datasets."""
+
+    seed: int
+    fleurs_utterances: int = Field(ge=1)
+    meetings: int = Field(ge=1)
+    turns_per_meeting: int = Field(ge=2)
+    speakers_per_meeting: tuple[int, int]
+    min_gap_seconds: float = Field(ge=0)
+    max_gap_seconds: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def check_ranges(self) -> DatasetBuildConfig:
+        """Ensure the ranges are ordered and meetings have at least two speakers."""
+        low, high = self.speakers_per_meeting
+        if not 2 <= low <= high:
+            raise ValueError("speakers_per_meeting must be an ordered range starting at 2 or more")
+        if self.min_gap_seconds > self.max_gap_seconds:
+            raise ValueError("min_gap_seconds must not exceed max_gap_seconds")
+        return self
+
+
+class EvaluationConfig(StrictModel):
+    """Evaluation settings."""
+
+    test_set_dir: Path
+    output_dir: Path
+    results_path: Path
+    wer_exclude_subsets: tuple[str, ...] = ()
+    der_collar_seconds: float = Field(ge=0)
+    bertscore_enabled: bool
+    bertscore_model: str
+    action_match_threshold: float = Field(gt=0, le=1)
+    build: DatasetBuildConfig
+
+
 class Secrets(StrictModel):
     """Credentials read from the environment, never from YAML."""
 
@@ -167,6 +203,7 @@ class AppConfig(StrictModel):
     llm: LlmConfig
     summarize: SummarizeConfig
     runtime: RuntimeConfig
+    evaluation: EvaluationConfig
     secrets: Secrets = Field(default_factory=Secrets)
 
 
@@ -191,11 +228,14 @@ def load_config(
         raw.setdefault("llm", {}).setdefault("ollama", {})["host"] = ollama_host
 
     # Relative paths are anchored to the project root so scripts work from any folder.
-    paths = raw.get("paths")
-    if isinstance(paths, dict):
-        for key, value in paths.items():
-            if isinstance(value, str) and not Path(value).is_absolute():
-                paths[key] = str(PROJECT_ROOT / value)
+    for section in ("paths", "evaluation"):
+        values = raw.get(section)
+        if not isinstance(values, dict):
+            continue
+        for key, value in values.items():
+            is_path = key.endswith(("_dir", "_path"))
+            if is_path and isinstance(value, str) and not Path(value).is_absolute():
+                values[key] = str(PROJECT_ROOT / value)
 
     raw["secrets"] = Secrets(
         hf_token=_read_secret("HF_TOKEN"), llm_api_key=_read_secret("LLM_API_KEY")

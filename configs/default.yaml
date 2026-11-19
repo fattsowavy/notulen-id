@@ -79,3 +79,27 @@ summarize:
 runtime:
   # Limited VRAM and RAM: unload each model before the next stage starts.
   release_models_between_stages: true
+
+evaluation:
+  test_set_dir: data/test_set
+  output_dir: outputs/eval
+  results_path: reports/results.md
+  # LibriVox transcripts use pre-1972 spelling ("itoe", "djadi"), so WER on them would
+  # count spelling differences as errors. Those meetings are used for DER only.
+  wer_exclude_subsets: [rapat]
+  # Boundary tolerance on each side of a reference turn, the common DER setting.
+  der_collar_seconds: 0.25
+  bertscore_enabled: true
+  bertscore_model: bert-base-multilingual-cased
+  # Minimum token F1 between a predicted and a reference action item to count as a match.
+  action_match_threshold: 0.5
+  build:
+    seed: 13
+    # Utterances sampled from the FLEURS Indonesian test split for WER and CER.
+    fleurs_utterances: 100
+    # Simulated meetings stitched from LibriVox Indonesia readers for DER.
+    meetings: 6
+    turns_per_meeting: 12
+    speakers_per_meeting: [2, 3]
+    min_gap_seconds: 0.2
+    max_gap_seconds: 1.0
