@@ -1,0 +1,32 @@
+# Settings for the Hugging Face Spaces demo on ZeroGPU, where a GPU is lent only
+# inside @spaces.GPU functions. Only the differences from default.yaml are listed.
+extends: default.yaml
+
+asr:
+  model: medium
+  device: cuda
+  compute_type: float16
+  # Whisper runs on CTranslate2, not PyTorch, and ZeroGPU only tests PyTorch.
+  # If its CUDA kernels fail on the GPU, transcribe on CPU instead of failing.
+  cpu_fallback: true
+  cpu_compute_type: int8
+
+diarization:
+  device: cuda
+
+llm:
+  backend: openai_compatible
+  model: google/gemma-3-27b-it
+  openai_compatible:
+    base_url: https://router.huggingface.co/v1
+    # The Space secret HF_TOKEN needs the "Make calls to Inference Providers" permission.
+    use_hf_token: true
+
+runtime:
+  # Each GPU call starts fresh on ZeroGPU, so nothing is gained by keeping models loaded.
+  release_models_between_stages: true
+
+demo:
+  # The GPU time requested grows with audio length. Two minutes of audio requests
+  # 100 seconds, within the 2-minute daily quota of visitors who are not logged in.
+  max_audio_seconds: 120
