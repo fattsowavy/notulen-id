@@ -47,22 +47,18 @@ class FakePipeline:
     def __init__(self, summary_error: str | None = None) -> None:
         self.summary_error = summary_error
         self.calls: list[dict[str, Any]] = []
+        self.summarized = 0
 
     def run(self, audio_path: Path, **kwargs: Any) -> PipelineResult:
         self.calls.append(kwargs)
-        for stage in ("preprocess", "asr", "diarization", "alignment", "summary"):
-            kwargs["on_stage"](stage)
+        if kwargs.get("on_stage"):
+            for stage in ("preprocess", "asr", "diarization", "alignment"):
+                kwargs["on_stage"](stage)
 
         output_dir: Path = kwargs["output_dir"]
         output_dir.mkdir(parents=True)
         transcript_md = output_dir / "transcript.md"
         transcript_md.write_text("**Pembicara 1** [00:00:00]: halo", encoding="utf-8")
-        files = {"transcript_md": transcript_md}
-        summary = None if self.summary_error else SUMMARY
-        if summary is not None:
-            files["summary"] = output_dir / "summary.md"
-            files["summary"].write_text("# Notulen", encoding="utf-8")
-
         return PipelineResult(
             transcript=Transcript(
                 source=audio_path.name,
@@ -72,11 +68,22 @@ class FakePipeline:
                 segments=(Segment(start=0.0, end=1.0, text="halo", speaker="Pembicara 1"),),
             ),
             turns=(),
-            summary=summary,
-            summary_error=self.summary_error,
+            output_dir=output_dir,
             timings={"asr": 2.0, "total": 3.5},
-            files=files,
+            files={"transcript_md": transcript_md},
         )
+
+    def summarize(self, result: PipelineResult, on_stage: Any = None) -> PipelineResult:
+        self.summarized += 1
+        if on_stage:
+            on_stage("summary")
+        if self.summary_error:
+            result.summary_error = self.summary_error
+        else:
+            result.summary = SUMMARY
+            result.files["summary"] = result.output_dir / "summary.md"
+            result.files["summary"].write_text("# Notulen", encoding="utf-8")
+        return result
 
 
 @pytest.fixture
@@ -139,7 +146,50 @@ def test_zero_speakers_means_automatic(config: AppConfig) -> None:
     make_runner(config, pipeline).run("rapat.mp3", 0, False, lambda *args, **kwargs: None)
 
     assert pipeline.calls[0]["num_speakers"] is None
+    assert pipeline.summarized == 0
+
+
+def test_audio_stages_never_include_the_summary(config: AppConfig) -> None:
+    pipeline = FakePipeline()
+
+    make_runner(config, pipeline).run("rapat.mp3", 0, True, lambda *args, **kwargs: None)
+
     assert pipeline.calls[0]["summarize"] is False
+    assert pipeline.summarized == 1
+
+
+def test_zerogpu_path_runs_audio_stages_in_the_gpu_function(
+    config: AppConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pipeline = FakePipeline()
+    runner = make_runner(config, pipeline)
+    monkeypatch.setattr(app, "ON_ZEROGPU", True)
+    progress: list[str] = []
+
+    outputs = runner.run("rapat.mp3", 2, True, lambda value, desc: progress.append(desc))
+
+    # The real function, as on Spaces without a GPU decorator, reaches the shared runner.
+    assert pipeline.calls[0]["num_speakers"] == 2
+    assert "on_stage" not in pipeline.calls[0]
+    assert progress[0] == "Memproses audio di GPU"
+    assert "Membuat ringkasan dengan LLM" in progress
+    assert "Pembicara 1" in outputs[0]
+
+
+@pytest.mark.parametrize(
+    ("audio_seconds", "expected"), [(None, 150), (0.0, 40), (60.0, 70), (120.0, 100), (900.0, 150)]
+)
+def test_gpu_time_estimate(audio_seconds: float | None, expected: int) -> None:
+    assert app.estimate_gpu_seconds(audio_seconds) == expected
+
+
+def test_gpu_decorator_is_a_no_op_without_spaces(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(app, "spaces", None)
+
+    def work() -> str:
+        return "ok"
+
+    assert app.gpu(duration=lambda: 1)(work) is work
 
 
 def test_failed_summary_is_reported(config: AppConfig) -> None:

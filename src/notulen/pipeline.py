@@ -34,6 +34,8 @@ class PipelineResult:
 
     transcript: Transcript
     turns: tuple[SpeakerTurn, ...]
+    audio_seconds: float = 0.0
+    output_dir: Path = Path()
     summary: Summary | None = None
     summary_error: str | None = None
     timings: dict[str, float] = field(default_factory=dict)
@@ -124,26 +126,55 @@ class NotulenPipeline:
             with stage("alignment"):
                 aligned = align_transcript(transcript, turns, self.config.merge)
 
-            result = PipelineResult(transcript=aligned, turns=turns, timings=timings)
+            result = PipelineResult(
+                transcript=aligned,
+                turns=turns,
+                timings=timings,
+                audio_seconds=audio.duration,
+                output_dir=output_dir,
+            )
             self._write_transcript(result, output_dir)
-
-            if summarize and aligned.segments:
-                with stage("summary"):
-                    self._summarize(result)
-                if result.summary is not None:
-                    self._write_summary(result, output_dir)
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
 
-        timings["total"] = round(sum(timings.values()), 2)
-        result.files["timings"] = self._write_timings(timings, audio.duration, output_dir)
+        if summarize:
+            return self.summarize(result, on_stage)
+        self._finish(result)
+        return result
+
+    def summarize(
+        self, result: PipelineResult, on_stage: StageCallback | None = None
+    ) -> PipelineResult:
+        """Add an LLM summary to a finished transcript and update the timings.
+
+        Runs separately from the audio stages so callers can keep it off the GPU.
+        """
+        if result.transcript.segments:
+            if on_stage is not None:
+                on_stage("summary")
+            logger.info("Stage summary started")
+            started = time.perf_counter()
+            self._summarize(result)
+            result.timings["summary"] = round(time.perf_counter() - started, 2)
+            logger.info("Stage summary finished in %.1f s", result.timings["summary"])
+            if result.summary is not None:
+                self._write_summary(result, result.output_dir)
+        self._finish(result)
+        return result
+
+    def _finish(self, result: PipelineResult) -> None:
+        """Total the stage timings and write them next to the other outputs."""
+        stages = {name: value for name, value in result.timings.items() if name != "total"}
+        result.timings["total"] = round(sum(stages.values()), 2)
+        result.files["timings"] = self._write_timings(
+            result.timings, result.audio_seconds, result.output_dir
+        )
         logger.info(
             "Processed %.1f s of audio in %.1f s (RTF %.2f)",
-            audio.duration,
-            timings["total"],
-            timings["total"] / audio.duration if audio.duration > 0 else 0.0,
+            result.audio_seconds,
+            result.timings["total"],
+            result.timings["total"] / result.audio_seconds if result.audio_seconds > 0 else 0.0,
         )
-        return result
 
     def _summarize(self, result: PipelineResult) -> None:
         """Summarize the transcript, recording a failure instead of losing the transcript."""

@@ -65,6 +65,33 @@ def find_ffmpeg() -> str:
     return ffmpeg
 
 
+def probe_duration(path: Path) -> float | None:
+    """Return a media file's duration in seconds with ffprobe, or None if it is unknown."""
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe is None:
+        return None
+    result = subprocess.run(
+        [
+            ffprobe,
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path.resolve()),
+        ],
+        capture_output=True,
+        text=True,
+        errors="replace",
+        check=False,
+    )
+    try:
+        return float(result.stdout.strip())
+    except ValueError:
+        return None
+
+
 def convert_to_wav(
     input_path: Path, output_path: Path, sample_rate: int = 16000, channels: int = 1
 ) -> Path:
