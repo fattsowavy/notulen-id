@@ -244,6 +244,22 @@ def test_planned_meetings_alternate_speakers_without_reusing_utterances() -> Non
         assert len(meeting) <= build.turns_per_meeting
 
 
+def test_fix_mojibake_repairs_double_decoded_text_only() -> None:
+    builder = load_script("build_test_set")
+
+    assert builder.fix_mojibake("(1000â€“1300 M)") == "(1000–1300 M)"
+    assert builder.fix_mojibake("AsunciÃ³n") == "Asunción"
+    assert builder.fix_mojibake("Asunción berdiri") == "Asunción berdiri"
+    assert builder.fix_mojibake("teks biasa") == "teks biasa"
+
+
+def test_fleurs_references_have_no_mojibake() -> None:
+    builder = load_script("build_test_set")
+    for path in sorted((TEST_SET / "transcripts").glob("fleurs_*.txt")):
+        text = path.read_text(encoding="utf-8")
+        assert builder.fix_mojibake(text) == text, path.name
+
+
 def test_report_renders_every_section(tmp_path: Path) -> None:
     evaluate = load_script("evaluate")
     config = load_config(env_path=tmp_path / "missing.env")

@@ -152,6 +152,18 @@ def clean_generated(test_set: Path) -> None:
                 path.unlink()
 
 
+def fix_mojibake(text: str) -> str:
+    """Repair UTF-8 text that was decoded as Windows-1252 once, as in a few FLEURS rows.
+
+    For example "1000â€“1300" becomes "1000–1300". Text that does not round-trip
+    is returned unchanged, so correct non-ASCII text such as "Asunción" is kept.
+    """
+    try:
+        return text.encode("cp1252").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return text
+
+
 def build_fleurs(config: AppConfig, test_set: Path) -> int:
     """Sample FLEURS utterances and write 16 kHz audio with reference transcripts."""
     build = config.evaluation.build
@@ -170,7 +182,7 @@ def build_fleurs(config: AppConfig, test_set: Path) -> int:
         item_id = f"fleurs_{index:03d}"
         convert_to_wav(clips[row[1]], test_set / "audio" / f"{item_id}.wav", SAMPLE_RATE, 1)
         (test_set / "transcripts" / f"{item_id}.txt").write_text(
-            row[2].strip() + "\n", encoding="utf-8"
+            fix_mojibake(row[2].strip()) + "\n", encoding="utf-8"
         )
     logger.info("Wrote %d FLEURS utterances", len(chosen))
     return len(chosen)
