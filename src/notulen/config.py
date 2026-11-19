@@ -102,6 +102,8 @@ class OllamaConfig(StrictModel):
 
     host: str
     num_ctx: int = Field(gt=0)
+    # How long Ollama keeps the model in memory after a reply, e.g. "5m" or "0s".
+    keep_alive: str = "5m"
 
 
 class OpenAICompatibleConfig(StrictModel):
@@ -178,6 +180,13 @@ def load_config(
     ollama_host = os.getenv("OLLAMA_HOST", "").strip()
     if ollama_host:
         raw.setdefault("llm", {}).setdefault("ollama", {})["host"] = ollama_host
+
+    # Relative paths are anchored to the project root so scripts work from any folder.
+    paths = raw.get("paths")
+    if isinstance(paths, dict):
+        for key, value in paths.items():
+            if isinstance(value, str) and not Path(value).is_absolute():
+                paths[key] = str(PROJECT_ROOT / value)
 
     raw["secrets"] = Secrets(
         hf_token=_read_secret("HF_TOKEN"), llm_api_key=_read_secret("LLM_API_KEY")

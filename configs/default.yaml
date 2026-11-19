@@ -58,6 +58,8 @@ llm:
     # Overridden by OLLAMA_HOST in .env when set.
     host: http://127.0.0.1:11434
     num_ctx: 8192
+    # Unload the model right after each reply so Whisper and pyannote get the GPU back.
+    keep_alive: 0s
   openai_compatible:
     # The API key is read from LLM_API_KEY in .env.
     base_url: https://api.openai.com/v1
