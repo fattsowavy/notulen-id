@@ -80,6 +80,10 @@ runtime:
   # Limited VRAM and RAM: unload each model before the next stage starts.
   release_models_between_stages: true
 
+demo:
+  # Uploads longer than this are rejected by the web demo; null means no limit.
+  max_audio_seconds: null
+
 evaluation:
   test_set_dir: data/test_set
   output_dir: outputs/eval

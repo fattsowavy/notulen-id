@@ -12,7 +12,7 @@ from pathlib import Path
 
 from notulen.asr.transcriber import TranscriptionError
 from notulen.audio.preprocess import AudioPreprocessError
-from notulen.config import DEFAULT_CONFIG_PATH, load_config
+from notulen.config import load_config
 from notulen.diarization.diarizer import DiarizationError
 from notulen.logging_utils import setup_logging
 from notulen.pipeline import NotulenPipeline
@@ -26,7 +26,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("audio", type=Path, help="Input audio or video file.")
     parser.add_argument("--num-speakers", type=int, help="Exact number of speakers, if known.")
     parser.add_argument("--output-dir", type=Path, help="Folder for the results.")
-    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH, help="YAML config.")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="YAML config (default: NOTULEN_CONFIG, else configs/default.yaml).",
+    )
     parser.add_argument("--no-diarization", action="store_true", help="Skip speaker labels.")
     parser.add_argument("--no-summary", action="store_true", help="Skip the LLM summary.")
     return parser.parse_args()

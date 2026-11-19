@@ -71,6 +71,9 @@ class AsrConfig(StrictModel):
     word_timestamps: bool
     vad_filter: bool
     condition_on_previous_text: bool
+    # Retry on CPU when the GPU cannot run Whisper (missing libraries or kernels).
+    cpu_fallback: bool = False
+    cpu_compute_type: str = "int8"
 
 
 class DiarizationConfig(StrictModel):
@@ -110,6 +113,8 @@ class OpenAICompatibleConfig(StrictModel):
     """OpenAI-compatible backend settings."""
 
     base_url: str
+    # Authenticate with HF_TOKEN when LLM_API_KEY is not set, e.g. for the Hugging Face router.
+    use_hf_token: bool = False
 
 
 class LlmConfig(StrictModel):
@@ -145,6 +150,13 @@ class RuntimeConfig(StrictModel):
     """Resource management settings."""
 
     release_models_between_stages: bool
+
+
+class DemoConfig(StrictModel):
+    """Web demo settings."""
+
+    # Longer uploads are rejected; null means no limit.
+    max_audio_seconds: float | None = Field(default=None, gt=0)
 
 
 class DatasetBuildConfig(StrictModel):
@@ -204,6 +216,7 @@ class AppConfig(StrictModel):
     summarize: SummarizeConfig
     runtime: RuntimeConfig
     evaluation: EvaluationConfig
+    demo: DemoConfig = Field(default_factory=DemoConfig)
     secrets: Secrets = Field(default_factory=Secrets)
 
 
@@ -213,15 +226,47 @@ def _read_secret(name: str) -> SecretStr | None:
     return SecretStr(value) if value else None
 
 
-def load_config(
-    config_path: Path = DEFAULT_CONFIG_PATH, env_path: Path = DEFAULT_ENV_PATH
-) -> AppConfig:
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Merge override into base recursively; override wins for non-mapping values."""
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _read_yaml(path: Path, seen: tuple[Path, ...] = ()) -> dict[str, Any]:
+    """Read a config file, applying "extends: other.yaml" relative to its folder."""
+    path = path.resolve()
+    if path in seen:
+        raise ValueError(f"Config files extend each other in a loop: {path}")
+    raw: Any = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"Config file must contain a YAML mapping: {path}")
+
+    parent = raw.pop("extends", None)
+    if parent is None:
+        return raw
+    return _deep_merge(_read_yaml(path.parent / str(parent), (*seen, path)), raw)
+
+
+def resolve_config_path(config_path: Path | None = None) -> Path:
+    """Use the given path, else NOTULEN_CONFIG from the environment, else the default."""
+    if config_path is not None:
+        return config_path
+    from_env = os.getenv("NOTULEN_CONFIG", "").strip()
+    if not from_env:
+        return DEFAULT_CONFIG_PATH
+    path = Path(from_env)
+    return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+def load_config(config_path: Path | None = None, env_path: Path = DEFAULT_ENV_PATH) -> AppConfig:
     """Load the YAML config, then apply secrets and overrides from the environment."""
     load_dotenv(env_path, override=False)
-
-    raw: Any = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        raise ValueError(f"Config file must contain a YAML mapping: {config_path}")
+    raw = _read_yaml(resolve_config_path(config_path))
 
     ollama_host = os.getenv("OLLAMA_HOST", "").strip()
     if ollama_host:
