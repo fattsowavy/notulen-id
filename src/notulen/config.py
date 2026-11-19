@@ -89,6 +89,13 @@ class MergeConfig(StrictModel):
     max_gap_seconds: float = Field(ge=0)
     speaker_label_format: str
 
+    @model_validator(mode="after")
+    def check_label_format(self) -> MergeConfig:
+        """Ensure each speaker receives a distinct label."""
+        if "{index}" not in self.speaker_label_format:
+            raise ValueError("speaker_label_format must contain {index}")
+        return self
+
 
 class OllamaConfig(StrictModel):
     """Ollama backend settings."""
