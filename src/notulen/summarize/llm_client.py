@@ -53,8 +53,13 @@ class LlmClient(ABC):
         """Close the underlying HTTP connection pool."""
         self._http.close()
 
-    def complete(self, prompt: str, system: str | None = None) -> str:
-        """Return the model's reply to a single user prompt."""
+    def complete(
+        self, prompt: str, system: str | None = None, json_schema: dict[str, Any] | None = None
+    ) -> str:
+        """Return the model's reply to a single user prompt.
+
+        With ``json_schema``, the backend is asked to reply with JSON only.
+        """
         messages: list[Message] = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -64,7 +69,7 @@ class LlmClient(ABC):
         for attempt in range(1, attempts + 1):
             try:
                 started = time.perf_counter()
-                reply = self._send(messages)
+                reply = self._send(messages, json_schema)
             except _RetryableError as exc:
                 if attempt == attempts:
                     raise LlmError(f"{exc} (after {attempts} attempt(s))") from exc
@@ -82,7 +87,7 @@ class LlmClient(ABC):
         raise AssertionError("unreachable")
 
     @abstractmethod
-    def _send(self, messages: list[Message]) -> str:
+    def _send(self, messages: list[Message], json_schema: dict[str, Any] | None) -> str:
         """Send one request and return the reply text."""
 
     @abstractmethod
@@ -120,20 +125,21 @@ class LlmClient(ABC):
 class OllamaClient(LlmClient):
     """Client for the Ollama chat API."""
 
-    def _send(self, messages: list[Message]) -> str:
-        body = self._post(
-            f"{self.config.ollama.host.rstrip('/')}/api/chat",
-            {
-                "model": self.config.model,
-                "messages": messages,
-                "stream": False,
-                "keep_alive": self.config.ollama.keep_alive,
-                "options": {
-                    "temperature": self.config.temperature,
-                    "num_ctx": self.config.ollama.num_ctx,
-                },
+    def _send(self, messages: list[Message], json_schema: dict[str, Any] | None) -> str:
+        payload: dict[str, Any] = {
+            "model": self.config.model,
+            "messages": messages,
+            "stream": False,
+            "keep_alive": self.config.ollama.keep_alive,
+            "options": {
+                "temperature": self.config.temperature,
+                "num_ctx": self.config.ollama.num_ctx,
             },
-        )
+        }
+        if json_schema is not None:
+            # Ollama constrains decoding to this schema.
+            payload["format"] = json_schema
+        body = self._post(f"{self.config.ollama.host.rstrip('/')}/api/chat", payload)
         try:
             return str(body["message"]["content"])
         except (KeyError, TypeError) as exc:
@@ -167,15 +173,19 @@ class OpenAICompatibleClient(LlmClient):
         super().__init__(config, transport, retry_backoff_seconds)
         self._api_key = api_key
 
-    def _send(self, messages: list[Message]) -> str:
+    def _send(self, messages: list[Message], json_schema: dict[str, Any] | None) -> str:
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else None
+        payload: dict[str, Any] = {
+            "model": self.config.model,
+            "messages": messages,
+            "temperature": self.config.temperature,
+        }
+        if json_schema is not None:
+            # JSON mode is the most widely supported option; the prompt describes the shape.
+            payload["response_format"] = {"type": "json_object"}
         body = self._post(
             f"{self.config.openai_compatible.base_url.rstrip('/')}/chat/completions",
-            {
-                "model": self.config.model,
-                "messages": messages,
-                "temperature": self.config.temperature,
-            },
+            payload,
             headers,
         )
         try:

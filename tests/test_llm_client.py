@@ -64,6 +64,31 @@ def test_ollama_request_format() -> None:
     assert [message["role"] for message in body["messages"]] == ["system", "user"]
 
 
+def test_json_schema_is_sent_to_each_backend() -> None:
+    schema = {"type": "object", "properties": {"topik": {"type": "array"}}}
+    ollama_requests: list[httpx.Request] = []
+    openai_requests: list[httpx.Request] = []
+    openai_reply = httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    ollama_client(recording([ollama_reply("{}")], ollama_requests)).complete(
+        "halo", json_schema=schema
+    )
+    OpenAICompatibleClient(
+        CONFIG, None, transport=httpx.MockTransport(recording([openai_reply], openai_requests))
+    ).complete("halo", json_schema=schema)
+
+    assert json.loads(ollama_requests[0].content)["format"] == schema
+    assert json.loads(openai_requests[0].content)["response_format"] == {"type": "json_object"}
+
+
+def test_plain_requests_do_not_ask_for_json() -> None:
+    requests: list[httpx.Request] = []
+
+    ollama_client(recording([ollama_reply("teks")], requests)).complete("halo")
+
+    assert "format" not in json.loads(requests[0].content)
+
+
 def test_server_errors_are_retried() -> None:
     requests: list[httpx.Request] = []
     responses = [httpx.Response(500, text="busy"), ollama_reply("berhasil")]
