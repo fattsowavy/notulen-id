@@ -105,7 +105,7 @@ Ringkasan dari [notebooks/01_error_analysis.ipynb](notebooks/01_error_analysis.i
 ### Windows (PowerShell)
 
 ```powershell
-git clone <url-repo> notulen-id
+git clone https://github.com/fattsowavy/notulen-id.git
 cd notulen-id
 conda env create -f environment.yml
 conda activate notulen
@@ -122,7 +122,7 @@ python scripts/check_device.py
 ### Linux (bash)
 
 ```bash
-git clone <url-repo> notulen-id
+git clone https://github.com/fattsowavy/notulen-id.git
 cd notulen-id
 conda env create -f environment.yml
 conda activate notulen
