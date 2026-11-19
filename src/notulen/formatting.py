@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from notulen.schemas import Segment, Transcript
+from notulen.schemas import Segment, Summary, Transcript
 
 UNKNOWN_SPEAKER = "Tidak diketahui"
 
@@ -38,18 +38,58 @@ def render_transcript_markdown(transcript: Transcript) -> str:
     return "\n".join(lines)
 
 
+def segment_prompt_line(segment: Segment) -> str:
+    """Render one utterance as a compact line for an LLM prompt."""
+    return f"[{format_timestamp(segment.start)}] {speaker_name(segment)}: {segment.text}"
+
+
 def transcript_to_prompt_text(transcript: Transcript) -> str:
     """Render a transcript as compact lines for an LLM prompt."""
-    return "\n".join(
-        f"[{format_timestamp(segment.start)}] {speaker_name(segment)}: {segment.text}"
-        for segment in transcript.segments
-    )
+    return "\n".join(segment_prompt_line(segment) for segment in transcript.segments)
 
 
-def render_summary_markdown(source: str, summary: str) -> str:
-    """Wrap an LLM summary in a Markdown document."""
-    return (
-        f"# Ringkasan: {source}\n\n"
-        "> Dibuat otomatis oleh LLM. Periksa kembali sebelum dibagikan.\n\n"
-        f"{summary.strip()}\n"
-    )
+def _bullets(values: tuple[str, ...], empty: str) -> list[str]:
+    return [f"- {value}" for value in values] if values else [f"_{empty}_"]
+
+
+def _table_cell(value: str | None) -> str:
+    """Make a value safe for a Markdown table cell."""
+    return (value or "-").replace("|", "\\|").replace("\n", " ")
+
+
+def render_summary_markdown(source: str, summary: Summary) -> str:
+    """Render structured minutes as Markdown."""
+    lines = [
+        f"# Notulen: {source}",
+        "",
+        "> Dibuat otomatis oleh LLM. Periksa kembali sebelum dibagikan.",
+        "",
+        "## Topik",
+        "",
+        *_bullets(summary.topik, "Tidak ada topik yang terdeteksi."),
+        "",
+        "## Keputusan",
+        "",
+        *_bullets(summary.keputusan, "Tidak ada keputusan yang jelas."),
+        "",
+        "## Poin penting",
+        "",
+        *_bullets(summary.poin_penting, "Tidak ada poin penting lain."),
+        "",
+        "## Tindak lanjut",
+        "",
+    ]
+    if summary.tindak_lanjut:
+        lines += [
+            "| Tugas | Penanggung jawab | Tenggat | Waktu | Kutipan sumber |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+        lines += [
+            f"| {_table_cell(item.tugas)} | {_table_cell(item.penanggung_jawab)} "
+            f"| {_table_cell(item.tenggat)} | {format_timestamp(item.timestamp)} "
+            f'| "{_table_cell(item.kutipan_sumber)}" |'
+            for item in summary.tindak_lanjut
+        ]
+    else:
+        lines.append("_Tidak ada tindak lanjut yang jelas._")
+    return "\n".join(lines) + "\n"

@@ -10,7 +10,7 @@ from notulen.formatting import (
     render_transcript_markdown,
     transcript_to_prompt_text,
 )
-from notulen.schemas import Segment, Transcript
+from notulen.schemas import ActionItem, Segment, Summary, Transcript
 
 
 @pytest.mark.parametrize(
@@ -49,9 +49,29 @@ def test_prompt_text_has_one_line_per_utterance() -> None:
     ]
 
 
-def test_summary_markdown_marks_llm_output() -> None:
-    markdown = render_summary_markdown("rapat.mp3", "\n## Topik\n- Anggaran\n")
+def test_summary_markdown_renders_every_section() -> None:
+    summary = Summary(
+        topik=("Anggaran",),
+        tindak_lanjut=(
+            ActionItem(
+                tugas="Kirim laporan",
+                penanggung_jawab="Budi",
+                kutipan_sumber="tolong kirim | laporan",
+                timestamp=75.0,
+            ),
+        ),
+    )
 
-    assert markdown.startswith("# Ringkasan: rapat.mp3")
+    markdown = render_summary_markdown("rapat.mp3", summary)
+
+    assert markdown.startswith("# Notulen: rapat.mp3")
     assert "Dibuat otomatis oleh LLM" in markdown
-    assert markdown.endswith("## Topik\n- Anggaran\n")
+    assert "## Topik\n\n- Anggaran\n" in markdown
+    assert "_Tidak ada keputusan yang jelas._" in markdown
+    assert '| Kirim laporan | Budi | - | 00:01:15 | "tolong kirim \\| laporan" |' in markdown
+
+
+def test_summary_markdown_without_action_items() -> None:
+    markdown = render_summary_markdown("rapat.mp3", Summary())
+
+    assert markdown.endswith("_Tidak ada tindak lanjut yang jelas._\n")

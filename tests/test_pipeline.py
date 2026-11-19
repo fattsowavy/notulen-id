@@ -11,7 +11,7 @@ import pytest
 from notulen.audio.preprocess import AudioChunk, PreprocessedAudio
 from notulen.config import AppConfig, PathsConfig, RuntimeConfig, load_config
 from notulen.pipeline import NotulenPipeline
-from notulen.schemas import Segment, SpeakerTurn, Transcript, Word
+from notulen.schemas import Segment, SpeakerTurn, Summary, Transcript, Word
 from notulen.summarize.llm_client import LlmError
 
 events: list[str] = []
@@ -66,11 +66,15 @@ class FakeClient:
     def __exit__(self, *args: Any) -> None:
         events.append("llm:close")
 
-    def complete(self, prompt: str) -> str:
+    def complete(self, prompt: str, json_schema: Any = None) -> str:
         self.prompts.append(prompt)
         if self.fail:
             raise LlmError("Cannot reach Ollama")
-        return "## Topik\n- Sapaan pagi"
+        if '"tindak_lanjut"' in prompt:
+            return json.dumps(
+                {"tindak_lanjut": [{"tugas": "Menyapa", "kutipan_sumber": "selamat pagi"}]}
+            )
+        return json.dumps({"topik": ["Sapaan pagi"], "keputusan": [], "poin_penting": []})
 
 
 @pytest.fixture
@@ -116,7 +120,14 @@ def test_run_writes_every_output(config: AppConfig, client: FakeClient, tmp_path
 
     output = tmp_path / "out" / "rapat"
     assert stages == ["preprocess", "asr", "diarization", "alignment", "summary"]
-    assert set(result.files) == {"transcript_json", "transcript_md", "rttm", "summary", "timings"}
+    assert set(result.files) == {
+        "transcript_json",
+        "transcript_md",
+        "rttm",
+        "summary",
+        "summary_json",
+        "timings",
+    }
     assert all(path.parent == output and path.is_file() for path in result.files.values())
 
     markdown = (output / "transcript.md").read_text(encoding="utf-8")
@@ -125,6 +136,11 @@ def test_run_writes_every_output(config: AppConfig, client: FakeClient, tmp_path
     assert Transcript.load_json(output / "transcript.json") == result.transcript
     assert "[00:00:00] Pembicara 1: selamat pagi" in client.prompts[0]
     assert "Sapaan pagi" in (output / "summary.md").read_text(encoding="utf-8")
+    assert result.summary is not None
+    assert result.summary.tindak_lanjut[0].kutipan_sumber == "selamat pagi"
+    assert Summary.model_validate_json((output / "summary.json").read_text("utf-8")) == (
+        result.summary
+    )
     assert "diar:run:2" in events
 
 

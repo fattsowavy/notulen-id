@@ -68,7 +68,13 @@ summarize:
   # Map-reduce splits long transcripts into windows of this size.
   chunk_max_chars: 12000
   chunk_overlap_chars: 500
+  # Action items without a quote are always rejected. When true, items whose quote
+  # cannot be found in the transcript are rejected as well.
   require_action_item_quote: true
+  # Minimum similarity (0-1) between an LLM quote and the transcript text it matches.
+  quote_match_threshold: 0.8
+  # How many times to ask again when the LLM returns invalid JSON.
+  json_attempts: 2
 
 runtime:
   # Limited VRAM and RAM: unload each model before the next stage starts.

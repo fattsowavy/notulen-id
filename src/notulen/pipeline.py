@@ -19,9 +19,9 @@ from notulen.config import AppConfig
 from notulen.diarization.diarizer import Diarizer, write_rttm
 from notulen.formatting import render_summary_markdown, render_transcript_markdown
 from notulen.merge.aligner import align_transcript
-from notulen.schemas import SpeakerTurn, Transcript
+from notulen.schemas import SpeakerTurn, Summary, Transcript
 from notulen.summarize.llm_client import LlmError, create_llm_client
-from notulen.summarize.summarizer import summarize_simple
+from notulen.summarize.summarizer import summarize_transcript
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class PipelineResult:
 
     transcript: Transcript
     turns: tuple[SpeakerTurn, ...]
-    summary: str | None = None
+    summary: Summary | None = None
     summary_error: str | None = None
     timings: dict[str, float] = field(default_factory=dict)
     files: dict[str, Path] = field(default_factory=dict)
@@ -131,11 +131,7 @@ class NotulenPipeline:
                 with stage("summary"):
                     self._summarize(result)
                 if result.summary is not None:
-                    path = output_dir / "summary.md"
-                    path.write_text(
-                        render_summary_markdown(aligned.source, result.summary), encoding="utf-8"
-                    )
-                    result.files["summary"] = path
+                    self._write_summary(result, output_dir)
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
 
@@ -153,10 +149,26 @@ class NotulenPipeline:
         """Summarize the transcript, recording a failure instead of losing the transcript."""
         try:
             with create_llm_client(self.config.llm, self.config.secrets) as client:
-                result.summary = summarize_simple(result.transcript, client, self.config.summarize)
+                result.summary = summarize_transcript(
+                    result.transcript, client, self.config.summarize
+                )
         except LlmError as exc:
             result.summary_error = str(exc)
             logger.error("Summary failed: %s", exc)
+
+    @staticmethod
+    def _write_summary(result: PipelineResult, output_dir: Path) -> None:
+        """Write the structured summary as JSON and Markdown."""
+        assert result.summary is not None
+        summary_json = output_dir / "summary.json"
+        summary_json.write_text(result.summary.model_dump_json(indent=2), encoding="utf-8")
+        result.files["summary_json"] = summary_json
+
+        summary_md = output_dir / "summary.md"
+        summary_md.write_text(
+            render_summary_markdown(result.transcript.source, result.summary), encoding="utf-8"
+        )
+        result.files["summary"] = summary_md
 
     @staticmethod
     def _write_transcript(result: PipelineResult, output_dir: Path) -> None:

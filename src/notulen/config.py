@@ -130,6 +130,15 @@ class SummarizeConfig(StrictModel):
     chunk_max_chars: int = Field(gt=0)
     chunk_overlap_chars: int = Field(ge=0)
     require_action_item_quote: bool
+    quote_match_threshold: float = Field(default=0.8, gt=0, le=1)
+    json_attempts: int = Field(default=2, ge=1)
+
+    @model_validator(mode="after")
+    def check_overlap(self) -> SummarizeConfig:
+        """Ensure each chunk adds new text."""
+        if self.chunk_overlap_chars >= self.chunk_max_chars:
+            raise ValueError("chunk_overlap_chars must be smaller than chunk_max_chars")
+        return self
 
 
 class RuntimeConfig(StrictModel):
