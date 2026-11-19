@@ -15,6 +15,7 @@ from notulen.summarize.llm_client import (
     OllamaClient,
     OpenAICompatibleClient,
     create_llm_client,
+    select_api_key,
 )
 
 CONFIG = LlmConfig(
@@ -180,3 +181,45 @@ def test_factory_selects_backend() -> None:
 
     assert isinstance(create_llm_client(CONFIG, secrets), OllamaClient)
     assert isinstance(create_llm_client(openai_config, secrets), OpenAICompatibleClient)
+
+
+def with_endpoint(base_url: str) -> LlmConfig:
+    return CONFIG.model_copy(
+        update={
+            "backend": "openai_compatible",
+            "openai_compatible": OpenAICompatibleConfig(base_url=base_url),
+        }
+    )
+
+
+def test_server_key_is_only_sent_to_the_configured_endpoint() -> None:
+    configured = with_endpoint("https://api.test/v1/")
+    secrets = Secrets(llm_api_key=SecretStr("sk-server"))
+
+    assert select_api_key(with_endpoint("https://API.test/v1"), configured, secrets) == "sk-server"
+    assert select_api_key(with_endpoint("https://other.test/v1"), configured, secrets) is None
+    assert select_api_key(CONFIG, CONFIG, secrets) is None
+    assert (
+        select_api_key(with_endpoint("https://other.test/v1"), configured, secrets, " sk-user ")
+        == "sk-user"
+    )
+
+
+def test_user_key_is_sent_and_named_in_errors() -> None:
+    requests: list[httpx.Request] = []
+    other = with_endpoint("https://other.test/v1")
+    client = create_llm_client(
+        other,
+        Secrets(llm_api_key=SecretStr("sk-server")),
+        user_api_key="sk-user",
+        configured=with_endpoint("https://api.test/v1"),
+    )
+    assert isinstance(client, OpenAICompatibleClient)
+    client._http = httpx.Client(
+        transport=httpx.MockTransport(recording([httpx.Response(401, text="no")], requests))
+    )
+
+    with pytest.raises(LlmError, match="entered in the demo"):
+        client.complete("halo")
+    assert requests[0].headers["Authorization"] == "Bearer sk-user"
+    assert requests[0].url.host == "other.test"

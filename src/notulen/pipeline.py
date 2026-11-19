@@ -15,7 +15,7 @@ from types import TracebackType
 
 from notulen.asr.transcriber import Transcriber
 from notulen.audio.preprocess import preprocess_audio
-from notulen.config import AppConfig
+from notulen.config import AppConfig, LlmConfig
 from notulen.diarization.diarizer import Diarizer, write_rttm
 from notulen.formatting import render_summary_markdown, render_transcript_markdown
 from notulen.merge.aligner import align_transcript
@@ -143,18 +143,24 @@ class NotulenPipeline:
         return result
 
     def summarize(
-        self, result: PipelineResult, on_stage: StageCallback | None = None
+        self,
+        result: PipelineResult,
+        on_stage: StageCallback | None = None,
+        llm: LlmConfig | None = None,
+        api_key: str | None = None,
     ) -> PipelineResult:
         """Add an LLM summary to a finished transcript and update the timings.
 
         Runs separately from the audio stages so callers can keep it off the GPU.
+        ``llm`` and ``api_key`` override the configured LLM for this call only;
+        the key is used for the request and not stored.
         """
         if result.transcript.segments:
             if on_stage is not None:
                 on_stage("summary")
             logger.info("Stage summary started")
             started = time.perf_counter()
-            self._summarize(result)
+            self._summarize(result, llm or self.config.llm, api_key)
             result.timings["summary"] = round(time.perf_counter() - started, 2)
             logger.info("Stage summary finished in %.1f s", result.timings["summary"])
             if result.summary is not None:
@@ -176,10 +182,13 @@ class NotulenPipeline:
             result.timings["total"] / result.audio_seconds if result.audio_seconds > 0 else 0.0,
         )
 
-    def _summarize(self, result: PipelineResult) -> None:
+    def _summarize(self, result: PipelineResult, llm: LlmConfig, api_key: str | None) -> None:
         """Summarize the transcript, recording a failure instead of losing the transcript."""
+        logger.info("Summarizing with %s model %s", llm.backend, llm.model)
         try:
-            with create_llm_client(self.config.llm, self.config.secrets) as client:
+            with create_llm_client(
+                llm, self.config.secrets, user_api_key=api_key, configured=self.config.llm
+            ) as client:
                 result.summary = summarize_transcript(
                     result.transcript, client, self.config.summarize
                 )

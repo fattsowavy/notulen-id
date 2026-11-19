@@ -15,6 +15,7 @@ from notulen.schemas import Segment, SpeakerTurn, Summary, Transcript, Word
 from notulen.summarize.llm_client import LlmError
 
 events: list[str] = []
+CLIENT_CALLS: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
 
 
 def word(text: str, start: float, end: float) -> Word:
@@ -108,8 +109,27 @@ def client(monkeypatch: pytest.MonkeyPatch) -> FakeClient:
     monkeypatch.setattr("notulen.pipeline.preprocess_audio", fake_preprocess)
     monkeypatch.setattr("notulen.pipeline.Transcriber", FakeTranscriber)
     monkeypatch.setattr("notulen.pipeline.Diarizer", FakeDiarizer)
-    monkeypatch.setattr("notulen.pipeline.create_llm_client", lambda *args: fake)
+
+    def factory(*args: Any, **kwargs: Any) -> Any:
+        CLIENT_CALLS.append((args, kwargs))
+        return fake
+
+    CLIENT_CALLS.clear()
+    monkeypatch.setattr("notulen.pipeline.create_llm_client", factory)
     return fake
+
+
+def test_summarize_can_use_another_llm_for_one_call(config: AppConfig, client: FakeClient) -> None:
+    other = config.llm.model_copy(update={"backend": "openai_compatible", "model": "llama"})
+
+    with NotulenPipeline(config) as pipeline:
+        result = pipeline.run(Path("rapat.mp3"), summarize=False)
+        pipeline.summarize(result, llm=other, api_key="sk-user")
+
+    (args, kwargs) = CLIENT_CALLS[0]
+    assert args[0] is other
+    assert kwargs == {"user_api_key": "sk-user", "configured": config.llm}
+    assert result.summary is not None
 
 
 def test_run_writes_every_output(config: AppConfig, client: FakeClient, tmp_path: Path) -> None:

@@ -169,9 +169,14 @@ class OpenAICompatibleClient(LlmClient):
         api_key: str | None,
         transport: httpx.BaseTransport | None = None,
         retry_backoff_seconds: float = 1.0,
+        key_source: str | None = None,
     ) -> None:
         super().__init__(config, transport, retry_backoff_seconds)
         self._api_key = api_key
+        # Named in authentication errors so the user knows which key to fix.
+        self._key_source = key_source or (
+            "HF_TOKEN" if config.openai_compatible.use_hf_token else "LLM_API_KEY"
+        )
 
     def _send(self, messages: list[Message], json_schema: dict[str, Any] | None) -> str:
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else None
@@ -198,12 +203,14 @@ class OpenAICompatibleClient(LlmClient):
 
     def _error_message(self, response: httpx.Response) -> str:
         if response.status_code in (401, 403):
-            source = "HF_TOKEN" if self.config.openai_compatible.use_hf_token else "LLM_API_KEY"
             return (
                 f"The LLM API rejected the credentials (HTTP {response.status_code}): "
-                f"{response.text[:200]}. Check {source} and its permissions."
+                f"{response.text[:200]}. Check {self._key_source} and its permissions."
             )
         return super()._error_message(response)
+
+
+USER_KEY_SOURCE = "the API key entered in the demo"
 
 
 def resolve_api_key(config: LlmConfig, secrets: Secrets) -> str | None:
@@ -215,6 +222,37 @@ def resolve_api_key(config: LlmConfig, secrets: Secrets) -> str | None:
     return None
 
 
+def same_endpoint(first: LlmConfig, second: LlmConfig) -> bool:
+    """Whether two configs send requests to the same OpenAI-compatible endpoint."""
+    if first.backend != "openai_compatible" or second.backend != "openai_compatible":
+        return False
+
+    def normalize(url: str) -> str:
+        return url.strip().rstrip("/").lower()
+
+    return normalize(first.openai_compatible.base_url) == normalize(
+        second.openai_compatible.base_url
+    )
+
+
+def select_api_key(
+    selected: LlmConfig,
+    configured: LlmConfig,
+    secrets: Secrets,
+    user_api_key: str | None = None,
+) -> str | None:
+    """Pick the key for a request: the user's own key, else the server's key.
+
+    The server's keys are used only when the request goes to the endpoint set in
+    the config file, so a provider chosen in the demo can never receive them.
+    """
+    if user_api_key and user_api_key.strip():
+        return user_api_key.strip()
+    if same_endpoint(selected, configured):
+        return resolve_api_key(configured, secrets)
+    return None
+
+
 def llm_unavailable_reason(config: LlmConfig, secrets: Secrets) -> str | None:
     """Explain why summaries cannot work with this configuration, or None if they can."""
     if config.backend == "openai_compatible" and resolve_api_key(config, secrets) is None:
@@ -223,8 +261,22 @@ def llm_unavailable_reason(config: LlmConfig, secrets: Secrets) -> str | None:
     return None
 
 
-def create_llm_client(config: LlmConfig, secrets: Secrets) -> LlmClient:
-    """Build the client for the configured backend."""
+def create_llm_client(
+    config: LlmConfig,
+    secrets: Secrets,
+    user_api_key: str | None = None,
+    configured: LlmConfig | None = None,
+) -> LlmClient:
+    """Build the client for a backend.
+
+    ``configured`` is the LLM section of the config file (defaults to ``config``);
+    server keys are only sent when ``config`` points at the same endpoint.
+    """
     if config.backend == "ollama":
         return OllamaClient(config)
-    return OpenAICompatibleClient(config, resolve_api_key(config, secrets))
+    has_user_key = bool(user_api_key and user_api_key.strip())
+    return OpenAICompatibleClient(
+        config,
+        select_api_key(config, configured or config, secrets, user_api_key),
+        key_source=USER_KEY_SOURCE if has_user_key else None,
+    )
