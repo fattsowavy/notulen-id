@@ -11,10 +11,12 @@ import argparse
 import logging
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import gradio as gr
+import httpx
 
 try:
     # Available on Hugging Face Spaces; ZeroGPU only lends a GPU inside @spaces.GPU.
@@ -24,13 +26,13 @@ except ImportError:
 
 from notulen.asr.transcriber import TranscriptionError
 from notulen.audio.preprocess import AudioPreprocessError, probe_duration
-from notulen.config import PROJECT_ROOT, AppConfig, load_config
+from notulen.config import PROJECT_ROOT, AppConfig, LlmConfig, LlmProviderConfig, load_config
 from notulen.diarization.diarizer import DiarizationError
 from notulen.formatting import format_timestamp, render_summary_markdown
 from notulen.logging_utils import setup_logging
 from notulen.pipeline import NotulenPipeline, PipelineResult
 from notulen.schemas import Summary
-from notulen.summarize.llm_client import llm_unavailable_reason
+from notulen.summarize.llm_client import same_endpoint, select_api_key
 
 logger = logging.getLogger("gradio_app")
 
@@ -57,8 +59,49 @@ GPU_BASE_SECONDS = 40
 GPU_SECONDS_PER_AUDIO_SECOND = 0.5
 GPU_MAX_SECONDS = 150
 
+OLLAMA_TAGS_TIMEOUT_SECONDS = 2.0
+# Used when the config lists no providers: offer only the LLM from the llm: section.
+CONFIGURED_PROVIDER_ID = "config"
+KEY_PRIVACY_NOTE = (
+    "API key hanya dipakai untuk permintaan ini: tidak disimpan dan tidak ditulis ke log. "
+    "Key milik server hanya dikirim ke penyedia yang diatur di file config."
+)
+
 ProgressCallback = Callable[..., Any]
 Outputs = tuple[str, str, list[list[str]], str | None, str]
+
+
+@dataclass(frozen=True)
+class ProviderView:
+    """What the LLM settings panel shows for one provider."""
+
+    models: list[str]
+    model: str
+    base_url: str
+    url_editable: bool
+    key_visible: bool
+    key_info: str
+
+
+@dataclass(frozen=True)
+class LlmChoice:
+    """The LLM chosen for one request, or why it cannot be used."""
+
+    config: LlmConfig | None
+    label: str
+    api_key: str | None = None
+    issue: str | None = None
+
+
+def list_ollama_models(host: str, timeout: float = OLLAMA_TAGS_TIMEOUT_SECONDS) -> list[str]:
+    """Names of the models installed in Ollama, or an empty list if it cannot be reached."""
+    try:
+        response = httpx.get(f"{host.rstrip('/')}/api/tags", timeout=timeout)
+        response.raise_for_status()
+        return sorted(str(model["name"]) for model in response.json().get("models", []))
+    except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
+        return []
+
 
 # The runner used by run_audio_stages, which must not take it as an argument.
 _ACTIVE_RUNNER: DemoRunner | None = None
@@ -176,8 +219,127 @@ class DemoRunner:
         global _ACTIVE_RUNNER
         self.config = config
         self.pipeline = NotulenPipeline(config)
-        self.llm_issue = llm_unavailable_reason(config.llm, config.secrets)
+        self.providers = self._enabled_providers(config)
+        self.default_provider = config.demo.default_llm_provider or next(iter(self.providers))
+        uses_ollama = any(provider.backend == "ollama" for provider in self.providers.values())
+        self._ollama_models = list_ollama_models(config.llm.ollama.host) if uses_ollama else []
         _ACTIVE_RUNNER = self
+
+    @staticmethod
+    def _enabled_providers(config: AppConfig) -> dict[str, LlmProviderConfig]:
+        providers = {
+            name: provider
+            for name, provider in config.demo.llm_providers.items()
+            if provider.enabled
+        }
+        if providers:
+            return providers
+        llm = config.llm
+        return {
+            CONFIGURED_PROVIDER_ID: LlmProviderConfig(
+                label=f"{llm.backend} (config)",
+                backend=llm.backend,
+                base_url=llm.openai_compatible.base_url if llm.backend != "ollama" else "",
+                models=(llm.model,),
+            )
+        }
+
+    def _llm_config(self, provider: LlmProviderConfig, model: str, base_url: str) -> LlmConfig:
+        """The configured LLM settings with the provider, model, and endpoint replaced."""
+        if provider.backend == "ollama":
+            return self.config.llm.model_copy(update={"backend": "ollama", "model": model})
+        endpoint = self.config.llm.openai_compatible.model_copy(update={"base_url": base_url})
+        return self.config.llm.model_copy(
+            update={"backend": "openai_compatible", "model": model, "openai_compatible": endpoint}
+        )
+
+    def _is_configured(self, provider: LlmProviderConfig) -> bool:
+        """Whether the provider is the LLM from the config file's llm: section."""
+        if provider.backend == "ollama":
+            return self.config.llm.backend == "ollama"
+        candidate = self._llm_config(provider, self.config.llm.model, provider.base_url)
+        return same_endpoint(candidate, self.config.llm)
+
+    def provider_view(self, provider_id: str) -> ProviderView:
+        """Describe how the settings panel should look for a provider."""
+        provider = self.providers[provider_id]
+        if provider.backend == "ollama":
+            models = self._ollama_models or list(provider.models)
+            base_url, editable = self.config.llm.ollama.host, False
+        else:
+            models, base_url, editable = (
+                list(provider.models),
+                provider.base_url,
+                not provider.base_url,
+            )
+
+        configured = self._is_configured(provider)
+        model = self.config.llm.model if configured else (models[0] if models else "")
+        if model and model not in models:
+            models = [model, *models]
+
+        server_key = configured and (
+            select_api_key(self.config.llm, self.config.llm, self.config.secrets) is not None
+        )
+        if provider.backend == "ollama":
+            key_info = ""
+        elif server_key:
+            key_info = "Opsional. Jika kosong, dipakai key milik server."
+        elif provider.requires_key:
+            key_info = f"Wajib untuk {provider.label}." + (
+                f" Buat di {provider.key_url}" if provider.key_url else ""
+            )
+        else:
+            key_info = "Opsional, isi jika server LLM memintanya."
+        return ProviderView(
+            models=models,
+            model=model,
+            base_url=base_url,
+            url_editable=editable,
+            key_visible=provider.backend != "ollama",
+            key_info=key_info,
+        )
+
+    def resolve_llm(
+        self,
+        provider_id: str | None,
+        model: str | None,
+        base_url: str | None,
+        api_key: str | None,
+    ) -> LlmChoice:
+        """Turn the settings panel values into an LLM config, or explain what is missing."""
+        provider_id = provider_id or self.default_provider
+        provider = self.providers.get(provider_id)
+        if provider is None:
+            return LlmChoice(
+                None, provider_id, issue=f"Penyedia LLM {provider_id!r} tidak dikenal."
+            )
+        if model is None:
+            model = self.provider_view(provider_id).model
+        model = model.strip()
+        if not model:
+            return LlmChoice(None, provider.label, issue="Ringkasan dilewati: isi nama model LLM.")
+
+        # Preset endpoints are fixed; only an empty preset takes the URL typed by the user.
+        url = provider.base_url or (base_url or "").strip()
+        if provider.backend != "ollama" and not url.startswith(("http://", "https://")):
+            return LlmChoice(
+                None,
+                provider.label,
+                issue="Ringkasan dilewati: isi base URL yang diawali http:// atau https://.",
+            )
+
+        config = self._llm_config(provider, model, url)
+        user_key = api_key.strip() if api_key and api_key.strip() else None
+        if provider.backend != "ollama" and provider.requires_key:
+            if select_api_key(config, self.config.llm, self.config.secrets, user_key) is None:
+                hint = f" Buat di {provider.key_url}" if provider.key_url else ""
+                return LlmChoice(
+                    None,
+                    provider.label,
+                    issue=f"Ringkasan dilewati: isi API key untuk {provider.label}.{hint}",
+                )
+        return LlmChoice(config, provider.label, api_key=user_key)
 
     def run(
         self,
@@ -185,8 +347,15 @@ class DemoRunner:
         num_speakers: float | None,
         summarize: bool,
         progress: ProgressCallback,
+        provider_id: str | None = None,
+        model: str | None = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
     ) -> Outputs:
-        """Process one upload and return values for every output component."""
+        """Process one upload and return values for every output component.
+
+        The LLM settings default to the provider selected when the page opens.
+        """
         if not audio_path:
             raise gr.Error("Unggah atau rekam audio terlebih dahulu.")
         limit = self.config.demo.max_audio_seconds
@@ -198,9 +367,10 @@ class DemoRunner:
                     f"{format_timestamp(limit)} di demo ini. Potong audionya atau jalankan lokal."
                 )
         notes: list[str] = []
-        if summarize and self.llm_issue:
+        choice = self.resolve_llm(provider_id, model, base_url, api_key) if summarize else None
+        if choice is not None and choice.issue:
             summarize = False
-            notes.append(self.llm_issue)
+            notes.append(f"⚠️ {choice.issue}")
         speakers = int(num_speakers) if num_speakers and num_speakers > 0 else None
 
         def on_stage(stage: str) -> None:
@@ -226,8 +396,12 @@ class DemoRunner:
             raise gr.Error(str(exc)) from exc
 
         # The LLM runs outside the GPU function so it does not spend GPU quota.
-        if summarize:
-            result = self.pipeline.summarize(result, on_stage)
+        if summarize and choice is not None and choice.config is not None:
+            result = self.pipeline.summarize(
+                result, on_stage, llm=choice.config, api_key=choice.api_key
+            )
+            if result.summary is not None:
+                notes.append(f"Ringkasan dibuat dengan `{choice.config.model}` ({choice.label}).")
         progress(1.0, desc="Selesai")
 
         transcript = result.files["transcript_md"].read_text(encoding="utf-8")
@@ -265,12 +439,34 @@ def build_demo(runner: DemoRunner, samples: list[str]) -> gr.Blocks:
                     maximum=20,
                     label="Jumlah pembicara (0 = deteksi otomatis)",
                 )
-                summarize = gr.Checkbox(
-                    value=runner.llm_issue is None,
-                    interactive=runner.llm_issue is None,
-                    label="Buat ringkasan dan tindak lanjut",
-                    info=runner.llm_issue,
-                )
+                summarize = gr.Checkbox(value=True, label="Buat ringkasan dan tindak lanjut")
+                view = runner.provider_view(runner.default_provider)
+                with gr.Accordion("Pengaturan LLM", open=False):
+                    provider = gr.Dropdown(
+                        choices=[(item.label, name) for name, item in runner.providers.items()],
+                        value=runner.default_provider,
+                        label="Penyedia",
+                    )
+                    model = gr.Dropdown(
+                        choices=view.models,
+                        value=view.model,
+                        allow_custom_value=True,
+                        label="Model",
+                        info="Pilih dari daftar atau ketik nama model lain.",
+                    )
+                    base_url = gr.Textbox(
+                        value=view.base_url,
+                        interactive=view.url_editable,
+                        label="Base URL",
+                        placeholder="http://127.0.0.1:1234/v1",
+                    )
+                    api_key = gr.Textbox(
+                        type="password",
+                        label="API key",
+                        info=view.key_info,
+                        visible=view.key_visible,
+                    )
+                    gr.Markdown(KEY_PRIVACY_NOTE)
                 submit = gr.Button("Proses", variant="primary")
                 if samples:
                     gr.Examples(examples=[[path] for path in samples], inputs=[audio])
@@ -285,17 +481,41 @@ def build_demo(runner: DemoRunner, samples: list[str]) -> gr.Blocks:
                         actions = gr.Dataframe(headers=ACTION_COLUMNS, interactive=False, wrap=True)
                 download = gr.DownloadButton("Unduh notulen (.md)", visible=True)
 
+        def on_provider_change(provider_id: str) -> tuple[Any, Any, Any]:
+            selected = runner.provider_view(provider_id)
+            return (
+                gr.update(choices=selected.models, value=selected.model),
+                gr.update(value=selected.base_url, interactive=selected.url_editable),
+                # Clear the key so it is not sent to a provider it was not meant for.
+                gr.update(value="", visible=selected.key_visible, info=selected.key_info),
+            )
+
+        provider.change(on_provider_change, inputs=provider, outputs=[model, base_url, api_key])
+
         def process(
             audio_path: str | None,
             speakers: float | None,
             make_summary: bool,
+            provider_id: str,
+            model_name: str | None,
+            endpoint: str | None,
+            key: str | None,
             progress: gr.Progress = gr.Progress(),  # noqa: B008
         ) -> Outputs:
-            return runner.run(audio_path, speakers, make_summary, progress)
+            return runner.run(
+                audio_path,
+                speakers,
+                make_summary,
+                progress,
+                provider_id=provider_id,
+                model=model_name,
+                base_url=endpoint,
+                api_key=key,
+            )
 
         submit.click(
             process,
-            inputs=[audio, num_speakers, summarize],
+            inputs=[audio, num_speakers, summarize, provider, model, base_url, api_key],
             outputs=[transcript, summary, actions, download, status],
         )
     return demo

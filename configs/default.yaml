@@ -83,6 +83,54 @@ runtime:
 demo:
   # Uploads longer than this are rejected by the web demo; null means no limit.
   max_audio_seconds: null
+  # LLM providers offered in the demo's "Pengaturan LLM" panel. Users can type any
+  # model name; the lists below are only suggestions. Server keys (LLM_API_KEY,
+  # HF_TOKEN) are sent only to the endpoint configured under llm:, never to a
+  # provider the user picks, so other providers need the user's own key.
+  default_llm_provider: ollama
+  llm_providers:
+    ollama:
+      label: Ollama (lokal)
+      backend: ollama
+      # Replaced by the models installed in Ollama when it is reachable.
+      models: [gemma3:4b]
+      requires_key: false
+    hf_router:
+      label: Hugging Face Inference Providers
+      backend: openai_compatible
+      base_url: https://router.huggingface.co/v1
+      models: [google/gemma-3-27b-it, aisingapore/Gemma-SEA-LION-v4-27B-IT]
+      key_url: https://huggingface.co/settings/tokens
+    groq:
+      label: Groq
+      backend: openai_compatible
+      base_url: https://api.groq.com/openai/v1
+      models: [llama-3.3-70b-versatile, openai/gpt-oss-120b]
+      key_url: https://console.groq.com/keys
+    gemini:
+      label: Google Gemini
+      backend: openai_compatible
+      base_url: https://generativelanguage.googleapis.com/v1beta/openai
+      models: [gemini-2.5-flash, gemini-2.5-pro]
+      key_url: https://aistudio.google.com/apikey
+    openrouter:
+      label: OpenRouter
+      backend: openai_compatible
+      base_url: https://openrouter.ai/api/v1
+      models: [google/gemma-3-27b-it, meta-llama/llama-3.3-70b-instruct]
+      key_url: https://openrouter.ai/keys
+    openai:
+      label: OpenAI
+      backend: openai_compatible
+      base_url: https://api.openai.com/v1
+      models: [gpt-4.1-mini, gpt-4o-mini]
+      key_url: https://platform.openai.com/api-keys
+    custom:
+      label: Lainnya (OpenAI-compatible)
+      backend: openai_compatible
+      # Empty: the user types the endpoint, e.g. http://127.0.0.1:1234/v1 for LM Studio.
+      base_url: ""
+      requires_key: false
 
 evaluation:
   test_set_dir: data/test_set

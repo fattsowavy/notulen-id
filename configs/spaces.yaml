@@ -30,3 +30,9 @@ demo:
   # The GPU time requested grows with audio length. Two minutes of audio requests
   # 100 seconds, within the 2-minute daily quota of visitors who are not logged in.
   max_audio_seconds: 120
+  # Visitors start on the server's own endpoint (its HF_TOKEN pays) and can switch to
+  # another provider with their own key. Ollama does not run on Spaces.
+  default_llm_provider: hf_router
+  llm_providers:
+    ollama:
+      enabled: false

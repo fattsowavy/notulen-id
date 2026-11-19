@@ -152,11 +152,40 @@ class RuntimeConfig(StrictModel):
     release_models_between_stages: bool
 
 
+class LlmProviderConfig(StrictModel):
+    """An LLM provider the web demo offers, with its endpoint and suggested models."""
+
+    label: str
+    backend: Literal["ollama", "openai_compatible"]
+    # Chat completions endpoint for openai_compatible; empty lets the user type one.
+    base_url: str = ""
+    # Suggestions shown in the model list; users may type any other model name.
+    models: tuple[str, ...] = ()
+    # When false, an empty API key is allowed (e.g. a local OpenAI-compatible server).
+    requires_key: bool = True
+    # Where users can create an API key for this provider.
+    key_url: str | None = None
+    enabled: bool = True
+
+
 class DemoConfig(StrictModel):
     """Web demo settings."""
 
     # Longer uploads are rejected; null means no limit.
     max_audio_seconds: float | None = Field(default=None, gt=0)
+    # Provider selected when the page opens; null picks the first enabled one.
+    default_llm_provider: str | None = None
+    llm_providers: dict[str, LlmProviderConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_default_provider(self) -> DemoConfig:
+        provider = self.llm_providers.get(self.default_llm_provider or "")
+        if self.default_llm_provider is not None and (provider is None or not provider.enabled):
+            raise ValueError(
+                f"demo.default_llm_provider {self.default_llm_provider!r} is not an enabled "
+                "entry of demo.llm_providers"
+            )
+        return self
 
 
 class DatasetBuildConfig(StrictModel):

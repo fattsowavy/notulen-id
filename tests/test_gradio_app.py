@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import httpx
 import pytest
+from pydantic import SecretStr, ValidationError
 
-from notulen.config import AppConfig, PathsConfig, load_config
+from notulen.config import PROJECT_ROOT, AppConfig, DemoConfig, PathsConfig, Secrets, load_config
 from notulen.pipeline import PipelineResult
 from notulen.schemas import ActionItem, Segment, Summary, Transcript
 
@@ -22,11 +25,15 @@ def load_app() -> ModuleType:
     spec = importlib.util.spec_from_file_location("gradio_app", APP_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    # Dataclasses look their module up in sys.modules while the module is loading.
+    sys.modules["gradio_app"] = module
     spec.loader.exec_module(module)
     return module
 
 
 app = load_app()
+# Kept before the autouse fixture replaces it, so it can be tested on its own.
+REAL_LIST_OLLAMA_MODELS = app.list_ollama_models
 
 SUMMARY = Summary(
     topik=("Anggaran",),
@@ -48,6 +55,7 @@ class FakePipeline:
         self.summary_error = summary_error
         self.calls: list[dict[str, Any]] = []
         self.summarized = 0
+        self.llm_calls: list[tuple[Any, str | None]] = []
 
     def run(self, audio_path: Path, **kwargs: Any) -> PipelineResult:
         self.calls.append(kwargs)
@@ -73,8 +81,15 @@ class FakePipeline:
             files={"transcript_md": transcript_md},
         )
 
-    def summarize(self, result: PipelineResult, on_stage: Any = None) -> PipelineResult:
+    def summarize(
+        self,
+        result: PipelineResult,
+        on_stage: Any = None,
+        llm: Any = None,
+        api_key: str | None = None,
+    ) -> PipelineResult:
         self.summarized += 1
+        self.llm_calls.append((llm, api_key))
         if on_stage:
             on_stage("summary")
         if self.summary_error:
@@ -86,13 +101,29 @@ class FakePipeline:
         return result
 
 
-@pytest.fixture
-def config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AppConfig:
-    for name in ("HF_TOKEN", "LLM_API_KEY", "OLLAMA_HOST"):
+@pytest.fixture(autouse=True)
+def no_ollama_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("HF_TOKEN", "LLM_API_KEY", "OLLAMA_HOST", "NOTULEN_CONFIG"):
         monkeypatch.delenv(name, raising=False)
-    base = load_config(env_path=tmp_path / "missing.env")
-    return base.model_copy(
+    monkeypatch.setattr(app, "list_ollama_models", lambda host: ["qwen3:8b", "gemma3:4b"])
+
+
+def with_paths(config: AppConfig, tmp_path: Path) -> AppConfig:
+    return config.model_copy(
         update={"paths": PathsConfig(output_dir=tmp_path / "out", temp_dir=tmp_path / "tmp")}
+    )
+
+
+@pytest.fixture
+def config(tmp_path: Path) -> AppConfig:
+    return with_paths(load_config(env_path=tmp_path / "missing.env"), tmp_path)
+
+
+@pytest.fixture
+def spaces_config(tmp_path: Path) -> AppConfig:
+    spaces = load_config(PROJECT_ROOT / "configs" / "spaces.yaml", env_path=tmp_path / "x.env")
+    return with_paths(
+        spaces.model_copy(update={"secrets": Secrets(hf_token=SecretStr("hf_server"))}), tmp_path
     )
 
 
@@ -227,3 +258,130 @@ def test_build_demo_with_and_without_samples(config: AppConfig, tmp_path: Path) 
 
     assert isinstance(app.build_demo(runner, []), gr.Blocks)
     assert isinstance(app.build_demo(runner, [str(sample)]), gr.Blocks)
+
+
+def test_ollama_view_lists_installed_models_and_starts_on_the_configured_one(
+    config: AppConfig,
+) -> None:
+    runner = make_runner(config, FakePipeline())
+    view = runner.provider_view("ollama")
+
+    assert runner.default_provider == "ollama"
+    assert view.model == config.llm.model == "gemma3:4b"
+    assert view.models == ["qwen3:8b", "gemma3:4b"]
+    assert not view.key_visible
+    assert not view.url_editable
+
+
+def test_default_run_uses_the_configured_llm_without_a_key(config: AppConfig) -> None:
+    pipeline = FakePipeline()
+
+    outputs = make_runner(config, pipeline).run("rapat.mp3", 0, True, lambda *a, **k: None)
+
+    llm, key = pipeline.llm_calls[0]
+    assert (llm.backend, llm.model, key) == ("ollama", "gemma3:4b", None)
+    assert "gemma3:4b" in outputs[4]
+
+
+def test_other_provider_needs_the_users_key(config: AppConfig) -> None:
+    pipeline = FakePipeline()
+    runner = make_runner(config, pipeline)
+
+    outputs = runner.run(
+        "rapat.mp3", 0, True, lambda *a, **k: None, provider_id="groq", model="llama-3.3-70b"
+    )
+    assert pipeline.summarized == 0
+    assert "API key untuk Groq" in outputs[4]
+    assert "console.groq.com" in outputs[4]
+
+    runner.run(
+        "rapat.mp3",
+        0,
+        True,
+        lambda *a, **k: None,
+        provider_id="groq",
+        model=" llama-3.3-70b ",
+        base_url="https://attacker.test/v1",
+        api_key=" gsk_user ",
+    )
+    llm, key = pipeline.llm_calls[0]
+    assert llm.model == "llama-3.3-70b"
+    # A preset's endpoint cannot be replaced from the page.
+    assert llm.openai_compatible.base_url == "https://api.groq.com/openai/v1"
+    assert key == "gsk_user"
+
+
+def test_custom_provider_takes_the_typed_endpoint(config: AppConfig) -> None:
+    pipeline = FakePipeline()
+    runner = make_runner(config, pipeline)
+    assert runner.provider_view("custom").url_editable
+
+    outputs = runner.run(
+        "rapat.mp3", 0, True, lambda *a, **k: None, provider_id="custom", model="m", base_url="lm"
+    )
+    assert "base URL" in outputs[4]
+
+    runner.run(
+        "rapat.mp3",
+        0,
+        True,
+        lambda *a, **k: None,
+        provider_id="custom",
+        model="local-model",
+        base_url="http://127.0.0.1:1234/v1",
+    )
+    llm, key = pipeline.llm_calls[0]
+    assert llm.openai_compatible.base_url == "http://127.0.0.1:1234/v1"
+    assert key is None
+
+
+def test_spaces_hides_ollama_and_offers_the_server_key(spaces_config: AppConfig) -> None:
+    runner = make_runner(spaces_config, FakePipeline())
+
+    assert runner.default_provider == "hf_router"
+    assert "ollama" not in runner.providers
+    assert "key milik server" in runner.provider_view("hf_router").key_info
+    assert "Wajib" in runner.provider_view("groq").key_info
+    assert runner.resolve_llm("hf_router", None, None, None).issue is None
+    assert runner.resolve_llm("groq", "llama", None, None).issue is not None
+
+
+def test_empty_model_is_reported(config: AppConfig) -> None:
+    choice = make_runner(config, FakePipeline()).resolve_llm("ollama", "  ", None, None)
+
+    assert choice.config is None
+    assert "nama model" in (choice.issue or "")
+
+
+def test_config_without_providers_offers_the_llm_section(config: AppConfig) -> None:
+    bare = config.model_copy(update={"demo": DemoConfig()})
+    runner = make_runner(bare, FakePipeline())
+
+    assert list(runner.providers) == [app.CONFIGURED_PROVIDER_ID]
+    assert runner.provider_view(app.CONFIGURED_PROVIDER_ID).model == "gemma3:4b"
+
+
+def test_unknown_default_provider_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="default_llm_provider"):
+        DemoConfig(default_llm_provider="nope")
+
+
+def test_list_ollama_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    original = REAL_LIST_OLLAMA_MODELS
+
+    def fake_get(url: str, timeout: float) -> httpx.Response:
+        assert url == "http://ollama.test:11434/api/tags"
+        return httpx.Response(
+            200,
+            json={"models": [{"name": "b:1"}, {"name": "a:2"}]},
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert original("http://ollama.test:11434/") == ["a:2", "b:1"]
+
+    def broken(url: str, timeout: float) -> httpx.Response:
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(httpx, "get", broken)
+    assert original("http://ollama.test:11434") == []
