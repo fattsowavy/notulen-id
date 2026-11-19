@@ -1,0 +1,43 @@
+{
+  "topik": [
+    "Evaluasi penjualan Kopi Senja bulan Oktober",
+    "Komisi aplikasi ojek online",
+    "Promo pesanan WhatsApp",
+    "Stok dan pemasok gula aren"
+  ],
+  "keputusan": [
+    "Kopi Senja tetap berjualan di aplikasi ojek online.",
+    "Harga menu di aplikasi dinaikkan dua ribu rupiah mulai tanggal 1 Desember.",
+    "Promo beli lima gratis satu untuk pesanan WhatsApp."
+  ],
+  "poin_penting": [
+    "Penjualan Oktober empat puluh lima juta rupiah, naik sekitar lima belas persen dari September.",
+    "Menu terlaris adalah es kopi susu gula aren.",
+    "Penjualan lewat aplikasi ojek online turun karena komisi dua puluh persen.",
+    "Usulan keluar dari aplikasi ditolak karena hampir sepertiga pelanggan datang dari aplikasi.",
+    "Stok gula aren tinggal untuk satu minggu dan pemasok lama sering telat."
+  ],
+  "tindak_lanjut": [
+    {
+      "tugas": "Mengubah harga menu di aplikasi ojek online",
+      "penanggung_jawab": "Pembicara 3",
+      "tenggat": "sebelum tanggal satu Desember",
+      "kutipan_sumber": "Saya ubah harga di aplikasi sebelum tanggal satu Desember.",
+      "timestamp": 0.0
+    },
+    {
+      "tugas": "Membuat desain poster promo beli lima gratis satu",
+      "penanggung_jawab": "Mas Yoga (Pembicara 4)",
+      "tenggat": "hari Rabu",
+      "kutipan_sumber": "Mas Yoga, tolong buat desain poster promonya.",
+      "timestamp": 0.0
+    },
+    {
+      "tugas": "Mencari pemasok gula aren cadangan dan membandingkan harganya",
+      "penanggung_jawab": "Bu Wati (Pembicara 2)",
+      "tenggat": "hari Jumat",
+      "kutipan_sumber": "Bu Wati, tolong cari pemasok gula aren cadangan dan bandingkan harganya, laporkan ke saya hari Jumat.",
+      "timestamp": 0.0
+    }
+  ]
+}

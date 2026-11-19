@@ -1,0 +1,13 @@
+Pembicara 1: Pagi semua. Kita evaluasi penjualan Kopi Senja bulan Oktober ya. Bu Wati, angkanya bagaimana?
+Pembicara 2: Penjualan Oktober empat puluh lima juta rupiah, naik sekitar lima belas persen dari September. Yang paling laku tetap es kopi susu gula aren.
+Pembicara 3: Tapi penjualan lewat aplikasi ojek online turun, Pak. Komisinya sekarang dua puluh persen, jadi margin kita tipis sekali.
+Pembicara 1: Itu masalah. Ada usul?
+Pembicara 4: Bagaimana kalau kita keluar saja dari aplikasi ojek online dan fokus ke pesanan WhatsApp?
+Pembicara 2: Jangan dulu, Mas Yoga. Hampir sepertiga pelanggan kita datang dari aplikasi. Kalau keluar, risikonya besar.
+Pembicara 1: Saya setuju dengan Bu Wati, kita tetap di aplikasi. Tapi harga menu di aplikasi kita naikkan dua ribu rupiah supaya komisinya tertutup. Mulai tanggal satu Desember.
+Pembicara 3: Oke, Pak. Saya ubah harga di aplikasi sebelum tanggal satu Desember.
+Pembicara 1: Lalu untuk pesanan WhatsApp, kita bikin promo beli lima gratis satu. Mas Yoga, tolong buat desain poster promonya.
+Pembicara 4: Siap, Pak Hendra. Posternya saya selesaikan hari Rabu.
+Pembicara 2: Satu lagi, Pak. Stok gula aren tinggal untuk satu minggu, dan pemasok lama sering telat kirim.
+Pembicara 1: Bu Wati, tolong cari pemasok gula aren cadangan dan bandingkan harganya, laporkan ke saya hari Jumat.
+Pembicara 2: Baik, Pak.

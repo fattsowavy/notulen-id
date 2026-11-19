@@ -1,0 +1,13 @@
+Pembicara 1: Oke teman-teman, kita mulai ya. Tugas besar mata kuliah Sistem Informasi dikumpulkan tanggal tiga puluh November, jadi waktunya tinggal tiga minggu.
+Pembicara 2: Iya, Dim. Topik kita kemarin masih dua pilihan, aplikasi antrean puskesmas atau aplikasi bank sampah.
+Pembicara 3: Aku lebih condong ke aplikasi antrean puskesmas. Datanya lebih gampang dicari, dan dosennya juga pernah bilang suka topik layanan publik.
+Pembicara 2: Setuju sama Nisa. Bank sampah menarik, tapi kita belum punya narasumber.
+Pembicara 1: Oke, berarti kita sepakat topiknya aplikasi antrean puskesmas. Sekarang pembagian tugas. Nisa, kamu bisa wawancara petugas puskesmas dekat kampus minggu ini?
+Pembicara 3: Bisa. Aku wawancara hari Kamis, nanti hasilnya aku tulis di dokumen bersama.
+Pembicara 1: Sip. Raka, kamu pegang desain tampilan di Figma ya, minimal lima halaman.
+Pembicara 2: Oke, aku kerjakan desainnya, target selesai Senin depan.
+Pembicara 1: Aku sendiri bikin bab satu sama bab dua laporannya sampai hari Minggu.
+Pembicara 3: Eh, presentasinya kapan, Dim? Kita perlu latihan nggak?
+Pembicara 1: Presentasinya tanggal dua Desember. Kita latihan bareng tanggal satu Desember di perpustakaan jam empat sore, setuju?
+Pembicara 2: Setuju.
+Pembicara 3: Setuju. Oh iya, menurut dosen, laporannya maksimal dua puluh halaman, jangan lebih.

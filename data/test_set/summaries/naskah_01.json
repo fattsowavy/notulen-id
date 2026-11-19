@@ -1,0 +1,41 @@
+{
+  "topik": [
+    "Kerja bakti membersihkan saluran air gang tiga",
+    "Pengaktifan kembali ronda malam"
+  ],
+  "keputusan": [
+    "Kerja bakti diadakan hari Minggu tanggal 17 mulai jam tujuh pagi untuk membersihkan saluran air gang tiga.",
+    "Tiga ratus ribu rupiah dari kas RT dipakai untuk konsumsi kerja bakti.",
+    "Ronda malam diaktifkan lagi mulai minggu depan, dibagi per gang dengan dua orang setiap malam.",
+    "Usulan pemasangan CCTV ditunda ke rapat bulan depan karena kas belum cukup."
+  ],
+  "poin_penting": [
+    "Saluran air di gang tiga mampet dan air masuk ke rumah warga saat hujan deras.",
+    "Alat kerja bakti kurang: hanya ada dua cangkul dan gerobak rusak.",
+    "Kas RT saat ini sekitar satu juta dua ratus ribu rupiah.",
+    "Bulan lalu dua motor hilang di gang lima."
+  ],
+  "tindak_lanjut": [
+    {
+      "tugas": "Meminjam cangkul dan gerobak dari RT enam",
+      "penanggung_jawab": "Pak Joko (Pembicara 3)",
+      "tenggat": "sebelum hari Sabtu",
+      "kutipan_sumber": "Pak Joko, tolong pinjam cangkul dan gerobak dari RT enam sebelum hari Sabtu.",
+      "timestamp": 0.0
+    },
+    {
+      "tugas": "Mengoordinasi ibu-ibu PKK menyiapkan sarapan kerja bakti",
+      "penanggung_jawab": "Bu Sari (Pembicara 2)",
+      "tenggat": "besok pagi",
+      "kutipan_sumber": "Bu Sari, tolong koordinasi ibu-ibu PKK untuk menyiapkan sarapan.",
+      "timestamp": 0.0
+    },
+    {
+      "tugas": "Membuat jadwal ronda dan membagikannya ke grup WhatsApp warga",
+      "penanggung_jawab": "Pak RT (Pembicara 1)",
+      "tenggat": "paling lambat hari Jumat",
+      "kutipan_sumber": "Saya sendiri yang akan membuat jadwalnya dan membagikan ke grup WhatsApp warga paling lambat hari Jumat.",
+      "timestamp": 0.0
+    }
+  ]
+}

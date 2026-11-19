@@ -1,0 +1,40 @@
+{
+  "topik": [
+    "Pemilihan topik tugas besar Sistem Informasi",
+    "Pembagian tugas kelompok",
+    "Persiapan presentasi"
+  ],
+  "keputusan": [
+    "Topik tugas besar adalah aplikasi antrean puskesmas.",
+    "Latihan presentasi bersama tanggal 1 Desember di perpustakaan jam empat sore."
+  ],
+  "poin_penting": [
+    "Tugas besar dikumpulkan tanggal 30 November, sekitar tiga minggu lagi.",
+    "Topik bank sampah tidak dipilih karena belum ada narasumber.",
+    "Presentasi dijadwalkan tanggal 2 Desember.",
+    "Laporan maksimal dua puluh halaman."
+  ],
+  "tindak_lanjut": [
+    {
+      "tugas": "Mewawancarai petugas puskesmas dan menulis hasilnya di dokumen bersama",
+      "penanggung_jawab": "Nisa (Pembicara 3)",
+      "tenggat": "hari Kamis",
+      "kutipan_sumber": "Aku wawancara hari Kamis, nanti hasilnya aku tulis di dokumen bersama.",
+      "timestamp": 0.0
+    },
+    {
+      "tugas": "Membuat desain tampilan di Figma minimal lima halaman",
+      "penanggung_jawab": "Raka (Pembicara 2)",
+      "tenggat": "Senin depan",
+      "kutipan_sumber": "Oke, aku kerjakan desainnya, target selesai Senin depan.",
+      "timestamp": 0.0
+    },
+    {
+      "tugas": "Menulis bab satu dan bab dua laporan",
+      "penanggung_jawab": "Dim (Pembicara 1)",
+      "tenggat": "hari Minggu",
+      "kutipan_sumber": "Aku sendiri bikin bab satu sama bab dua laporannya sampai hari Minggu.",
+      "timestamp": 0.0
+    }
+  ]
+}
